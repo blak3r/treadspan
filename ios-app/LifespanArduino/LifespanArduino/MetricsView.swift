@@ -1,3 +1,4 @@
+
 import SwiftUI
 import HealthKit
 import Charts
@@ -6,7 +7,8 @@ struct StepData: Identifiable {
     let id = UUID()
     let date: Date
     let total: Double
-    let lifespanSteps: Double
+    let lifespanArduinoSteps: Double
+    let lifespanFitSteps: Double
     let otherSteps: Double
     let label: String
 }
@@ -81,7 +83,8 @@ struct MetricsView: View {
                 .font(.headline)
             
             Text("Total Steps: \(Int(data.total))")
-            Text("Lifespan Steps: \(Int(data.lifespanSteps))")
+            Text("LifespanArduino Steps: \(Int(data.lifespanArduinoSteps))")
+            Text("Lifespan Fit Steps: \(Int(data.lifespanFitSteps))")
             Text("Other Steps: \(Int(data.otherSteps))")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -135,15 +138,21 @@ struct MetricsView: View {
             ForEach(stepData) { data in
                 BarMark(
                     x: .value("Time", data.label),
-                    y: .value("Steps", data.lifespanSteps)
+                    y: .value("Steps", data.lifespanArduinoSteps)
                 )
                 .foregroundStyle(Color.blue)
                 
                 BarMark(
                     x: .value("Time", data.label),
-                    y: .value("Steps", data.otherSteps)
+                    y: .value("Steps", data.lifespanFitSteps)
                 )
                 .foregroundStyle(Color.green)
+                
+                BarMark(
+                    x: .value("Time", data.label),
+                    y: .value("Steps", data.otherSteps)
+                )
+                .foregroundStyle(Color.gray.opacity(0.5))
             }
         }
         .frame(height: 200)
@@ -197,20 +206,27 @@ struct MetricsView: View {
         
         // First fetch total steps
         fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents) { totalSteps in
-            // Then fetch Lifespan steps
-            fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifespanArduino") { lifespanSteps in
-                DispatchQueue.main.async {
-                    self.stepData = totalSteps.map { date, totalCount in
-                        let lifespanCount = lifespanSteps[date] ?? 0
-                        return StepData(
-                            date: date,
-                            total: totalCount,
-                            lifespanSteps: lifespanCount,
-                            otherSteps: totalCount - lifespanCount,
-                            label: formatLabel(date)
-                        )
-                    }.sorted { $0.date < $1.date }
-                    self.isLoading = false
+            // Fetch LifespanArduino steps
+            // Source name: LifespanArduino, bundleIdentifier: Robotion.LifespanArduino
+            fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifespanArduino") { arduinoSteps in
+                // Then fetch Lifespan Fit steps
+                // Source name: Lifespan, bundleIdentifier: com.app.lifespanfit
+                fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "Lifespan") { fitSteps in
+                    DispatchQueue.main.async {
+                        self.stepData = totalSteps.map { date, totalCount in
+                            let arduinoCount = arduinoSteps[date] ?? 0
+                            let fitCount = fitSteps[date] ?? 0
+                            return StepData(
+                                date: date,
+                                total: totalCount,
+                                lifespanArduinoSteps: arduinoCount,
+                                lifespanFitSteps: fitCount,
+                                otherSteps: totalCount - (arduinoCount + fitCount),
+                                label: formatLabel(date)
+                            )
+                        }.sorted { $0.date < $1.date }
+                        self.isLoading = false
+                    }
                 }
             }
         }
@@ -221,16 +237,34 @@ struct MetricsView: View {
         let endDate = Date()
         let startDate = calendar.date(byAdding: .day, value: -365, to: endDate)!
         
+        let group = DispatchGroup()
+        var arduinoTotal = 0
+        var fitTotal = 0
+        
+        group.enter()
         fetchStepsByInterval(
             start: startDate,
             end: endDate,
             components: DateComponents(day: 1),
             sourceName: "LifespanArduino"
         ) { steps in
-            let total = steps.values.reduce(0, +)
-            DispatchQueue.main.async {
-                self.totalLifespanSteps365 = Int(total)
-            }
+            arduinoTotal = Int(steps.values.reduce(0, +))
+            group.leave()
+        }
+        
+        group.enter()
+        fetchStepsByInterval(
+            start: startDate,
+            end: endDate,
+            components: DateComponents(day: 1),
+            sourceName: "Lifespan"
+        ) { steps in
+            fitTotal = Int(steps.values.reduce(0, +))
+            group.leave()
+        }
+        
+        group.notify(queue: .main) {
+            self.totalLifespanSteps365 = arduinoTotal + fitTotal
         }
     }
     
@@ -394,34 +428,34 @@ struct MetricsView: View {
     }
     
     private func getDateRangeText() -> String {
-            let formatter = DateFormatter()
-            
-            switch timeRange {
-            case .day:
-                formatter.dateFormat = "MMMM d, yyyy"
-                return formatter.string(from: currentDate)
-            case .week:
-                formatter.dateFormat = "MMM d"
-                let endDate = Calendar.current.date(byAdding: .day, value: 6, to: currentDate)!
-                return "\(formatter.string(from: currentDate)) - \(formatter.string(from: endDate))"
-            case .month:
-                formatter.dateFormat = "MMMM yyyy"
-                return formatter.string(from: currentDate)
-            case .sixMonth:
-                formatter.dateFormat = "MMM yyyy"
-                let startDate = Calendar.current.date(byAdding: .month, value: -5, to: currentDate)!
-                return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
-            case .year:
-                formatter.dateFormat = "MMM yyyy"
-                let startDate = Calendar.current.date(byAdding: .month, value: -11, to: currentDate)!
-                return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
-            }
-        }
+        let formatter = DateFormatter()
         
-        private func getDataIndex(for xPosition: CGFloat, width: CGFloat) -> Int? {
-            let stepWidth = width / CGFloat(stepData.count)
-            let index = Int(xPosition / stepWidth)
-            guard index >= 0 && index < stepData.count else { return nil }
-            return index
+        switch timeRange {
+        case .day:
+            formatter.dateFormat = "MMMM d, yyyy"
+            return formatter.string(from: currentDate)
+        case .week:
+            formatter.dateFormat = "MMM d"
+            let endDate = Calendar.current.date(byAdding: .day, value: 6, to: currentDate)!
+            return "\(formatter.string(from: currentDate)) - \(formatter.string(from: endDate))"
+        case .month:
+            formatter.dateFormat = "MMMM yyyy"
+            return formatter.string(from: currentDate)
+        case .sixMonth:
+            formatter.dateFormat = "MMM yyyy"
+            let startDate = Calendar.current.date(byAdding: .month, value: -5, to: currentDate)!
+            return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
+        case .year:
+            formatter.dateFormat = "MMM yyyy"
+            let startDate = Calendar.current.date(byAdding: .month, value: -11, to: currentDate)!
+            return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
         }
     }
+    
+    private func getDataIndex(for xPosition: CGFloat, width: CGFloat) -> Int? {
+        let stepWidth = width / CGFloat(stepData.count)
+        let index = Int(xPosition / stepWidth)
+        guard index >= 0 && index < stepData.count else { return nil }
+        return index
+    }
+}
