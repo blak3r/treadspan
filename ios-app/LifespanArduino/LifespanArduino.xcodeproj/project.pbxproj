@@ -403,6 +403,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to connect to the arduino micro data logger and sync sessions.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "This app uses Bluetooth to connect to your treadmill and sync sessions.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app gets step counts so it can show you a percentage of how many steps you did via your treadmill vs how many you did via other sources.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app writes steps from your treadmill that were logged by the Arduino hardware to HealthKit.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -436,6 +437,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to connect to the arduino micro data logger and sync sessions.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "This app uses Bluetooth to connect to your treadmill and sync sessions.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app gets step counts so it can show you a percentage of how many steps you did via your treadmill vs how many you did via other sources.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app writes steps from your treadmill that were logged by the Arduino hardware to HealthKit.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
