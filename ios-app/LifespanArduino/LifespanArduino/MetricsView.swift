@@ -13,12 +13,14 @@ struct StepData: Identifiable {
 
 struct MetricsView: View {
     private let healthStore = HKHealthStore()
+    private let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
     @State private var timeRange: TimeRange = .day
     @State private var currentDate = Date()
     @State private var stepData: [StepData] = []
     @State private var selectedBar: StepData?
     @State private var isLoading = true
     @State private var hasPermission = false
+    @State private var totalLifespanSteps365: Int = 0
     
     enum TimeRange: String, CaseIterable {
         case day = "D"
@@ -65,6 +67,10 @@ struct MetricsView: View {
             dateNavigator
             
             chartView
+            
+            Text("Total Steps on Treadmill (last 365): \(totalLifespanSteps365)")
+                .font(.subheadline)
+                .padding(.top, 8)
         }
         .padding()
     }
@@ -91,6 +97,7 @@ struct MetricsView: View {
                     withAnimation {
                         timeRange = range
                         fetchHealthData()
+                        fetchTotalLifespanSteps()
                     }
                 }
                 .padding(.horizontal, 12)
@@ -178,9 +185,137 @@ struct MetricsView: View {
                 hasPermission = success
                 if success {
                     fetchHealthData()
+                    fetchTotalLifespanSteps()
                 }
             }
         }
+    }
+    
+    private func fetchHealthData() {
+        isLoading = true
+        let (startDate, endDate, intervalComponents) = getDateRange()
+        
+        // First fetch total steps
+        fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents) { totalSteps in
+            // Then fetch Lifespan steps
+            fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifespanArduino") { lifespanSteps in
+                DispatchQueue.main.async {
+                    self.stepData = totalSteps.map { date, totalCount in
+                        let lifespanCount = lifespanSteps[date] ?? 0
+                        return StepData(
+                            date: date,
+                            total: totalCount,
+                            lifespanSteps: lifespanCount,
+                            otherSteps: totalCount - lifespanCount,
+                            label: formatLabel(date)
+                        )
+                    }.sorted { $0.date < $1.date }
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+    
+    private func fetchTotalLifespanSteps() {
+        let calendar = Calendar.current
+        let endDate = Date()
+        let startDate = calendar.date(byAdding: .day, value: -365, to: endDate)!
+        
+        fetchStepsByInterval(
+            start: startDate,
+            end: endDate,
+            components: DateComponents(day: 1),
+            sourceName: "LifespanArduino"
+        ) { steps in
+            let total = steps.values.reduce(0, +)
+            DispatchQueue.main.async {
+                self.totalLifespanSteps365 = Int(total)
+            }
+        }
+    }
+    
+    private func fetchStepsByInterval(
+        start: Date,
+        end: Date,
+        components: DateComponents,
+        sourceName: String? = nil,
+        completion: @escaping ([Date: Double]) -> Void
+    ) {
+        var predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        
+        if let sourceName = sourceName {
+            let sourceQuery = HKSourceQuery(sampleType: stepType, samplePredicate: nil) { _, sourcesOrNil, error in
+                guard let sources = sourcesOrNil, error == nil else {
+                    completion([:])
+                    return
+                }
+                
+                // Debug: Print all sources
+                print("Available sources:")
+                sources.forEach { source in
+                    print("Source name: \(source.name), bundleIdentifier: \(source.bundleIdentifier)")
+                }
+                
+                if let targetSource = sources.first(where: { $0.name == sourceName }) {
+                    let sourcePredicate = HKQuery.predicateForObjects(from: [targetSource])
+                    predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [predicate, sourcePredicate])
+                } else {
+                    print("Warning: Could not find source named \(sourceName)")
+                    completion([:])
+                    return
+                }
+                
+                executeStatsQuery(
+                    start: start,
+                    end: end,
+                    intervalComponents: components,
+                    predicate: predicate,
+                    completion: completion
+                )
+            }
+            healthStore.execute(sourceQuery)
+        } else {
+            executeStatsQuery(
+                start: start,
+                end: end,
+                intervalComponents: components,
+                predicate: predicate,
+                completion: completion
+            )
+        }
+    }
+    
+    private func executeStatsQuery(
+        start: Date,
+        end: Date,
+        intervalComponents: DateComponents,
+        predicate: NSPredicate,
+        completion: @escaping ([Date: Double]) -> Void
+    ) {
+        let query = HKStatisticsCollectionQuery(
+            quantityType: stepType,
+            quantitySamplePredicate: predicate,
+            options: .cumulativeSum,
+            anchorDate: start,
+            intervalComponents: intervalComponents
+        )
+        
+        query.initialResultsHandler = { _, results, error in
+            guard let statsCollection = results, error == nil else {
+                completion([:])
+                return
+            }
+            
+            var stepMap: [Date: Double] = [:]
+            statsCollection.enumerateStatistics(from: start, to: end) { statistics, _ in
+                if let sum = statistics.sumQuantity() {
+                    stepMap[statistics.startDate] = sum.doubleValue(for: HKUnit.count())
+                }
+            }
+            completion(stepMap)
+        }
+        
+        healthStore.execute(query)
     }
     
     private func getDateRange() -> (start: Date, end: Date, interval: DateComponents) {
@@ -232,6 +367,7 @@ struct MetricsView: View {
         }
         
         fetchHealthData()
+        fetchTotalLifespanSteps()
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -258,118 +394,34 @@ struct MetricsView: View {
     }
     
     private func getDateRangeText() -> String {
-        let formatter = DateFormatter()
-        
-        switch timeRange {
-        case .day:
-            formatter.dateFormat = "MMMM d, yyyy"
-            return formatter.string(from: currentDate)
-        case .week:
-            formatter.dateFormat = "MMM d"
-            let endDate = Calendar.current.date(byAdding: .day, value: 6, to: currentDate)!
-            return "\(formatter.string(from: currentDate)) - \(formatter.string(from: endDate))"
-        case .month:
-            formatter.dateFormat = "MMMM yyyy"
-            return formatter.string(from: currentDate)
-        case .sixMonth:
-            formatter.dateFormat = "MMM yyyy"
-            let startDate = Calendar.current.date(byAdding: .month, value: -5, to: currentDate)!
-            return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
-        case .year:
-            formatter.dateFormat = "MMM yyyy"
-            let startDate = Calendar.current.date(byAdding: .month, value: -11, to: currentDate)!
-            return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
-        }
-    }
-    
-    private func getDataIndex(for xPosition: CGFloat, width: CGFloat) -> Int? {
-        let stepWidth = width / CGFloat(stepData.count)
-        let index = Int(xPosition / stepWidth)
-        guard index >= 0 && index < stepData.count else { return nil }
-        return index
-    }
-    
-    private func fetchHealthData() {
-        isLoading = true
-        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-        
-        let (startDate, endDate, intervalComponents) = getDateRange()
-        
-        // Query for total steps
-        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
-        
-        let totalStepsQuery = HKStatisticsCollectionQuery(
-            quantityType: stepType,
-            quantitySamplePredicate: predicate,
-            options: .cumulativeSum,
-            anchorDate: startDate,
-            intervalComponents: intervalComponents
-        )
-        
-        // Query for Lifespan steps
-        let sourcePredicate = HKQuery.predicateForObjects(
-            withMetadataKey: HKMetadataKeyDeviceManufacturerName,
-            allowedValues: ["LifespanArduino"]
-        )
-        let combinedPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            predicate,
-            sourcePredicate
-        ])
-        
-        let lifespanStepsQuery = HKStatisticsCollectionQuery(
-            quantityType: stepType,
-            quantitySamplePredicate: combinedPredicate,
-            options: .cumulativeSum,
-            anchorDate: startDate,
-            intervalComponents: intervalComponents
-        )
-        
-        var tempData: [Date: (total: Double, lifespan: Double)] = [:]
-        
-        let group = DispatchGroup()
-        
-        // Fetch total steps
-        group.enter()
-        totalStepsQuery.initialResultsHandler = { (query: HKStatisticsCollectionQuery, results: HKStatisticsCollection?, error: Error?) in
-            if let results = results {
-                results.enumerateStatistics(from: startDate, to: endDate) { statistics, stop in
-                    if let sum = statistics.sumQuantity()?.doubleValue(for: HKUnit.count()) {
-                        tempData[statistics.startDate] = (sum, tempData[statistics.startDate]?.lifespan ?? 0)
-                    }
-                }
-            }
-            group.leave()
-        }
-        
-        // Fetch Lifespan steps
-        group.enter()
-        lifespanStepsQuery.initialResultsHandler = { (query: HKStatisticsCollectionQuery, results: HKStatisticsCollection?, error: Error?) in
-            if let results = results {
-                results.enumerateStatistics(from: startDate, to: endDate) { statistics, stop in
-                    if let sum = statistics.sumQuantity()?.doubleValue(for: HKUnit.count()) {
-                        let total = tempData[statistics.startDate]?.total ?? 0
-                        tempData[statistics.startDate] = (total, sum)
-                    }
-                }
-            }
-            group.leave()
-        }
-        
-        group.notify(queue: .main) {
-            stepData = tempData.map { date, values in
-                StepData(
-                    date: date,
-                    total: values.total,
-                    lifespanSteps: values.lifespan,
-                    otherSteps: values.total - values.lifespan,
-                    label: formatLabel(date)
-                )
-            }.sorted { $0.date < $1.date }
+            let formatter = DateFormatter()
             
-            isLoading = false
+            switch timeRange {
+            case .day:
+                formatter.dateFormat = "MMMM d, yyyy"
+                return formatter.string(from: currentDate)
+            case .week:
+                formatter.dateFormat = "MMM d"
+                let endDate = Calendar.current.date(byAdding: .day, value: 6, to: currentDate)!
+                return "\(formatter.string(from: currentDate)) - \(formatter.string(from: endDate))"
+            case .month:
+                formatter.dateFormat = "MMMM yyyy"
+                return formatter.string(from: currentDate)
+            case .sixMonth:
+                formatter.dateFormat = "MMM yyyy"
+                let startDate = Calendar.current.date(byAdding: .month, value: -5, to: currentDate)!
+                return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
+            case .year:
+                formatter.dateFormat = "MMM yyyy"
+                let startDate = Calendar.current.date(byAdding: .month, value: -11, to: currentDate)!
+                return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
+            }
         }
         
-        healthStore.execute(totalStepsQuery)
-        healthStore.execute(lifespanStepsQuery)
+        private func getDataIndex(for xPosition: CGFloat, width: CGFloat) -> Int? {
+            let stepWidth = width / CGFloat(stepData.count)
+            let index = Int(xPosition / stepWidth)
+            guard index >= 0 && index < stepData.count else { return nil }
+            return index
+        }
     }
-}
