@@ -11,7 +11,7 @@ struct ContentView: View {
                 }
             
             // 2) METRICS TAB
-            MetricsProView()
+            MetricsView()
                 .tabItem {
                     Label("Metrics", systemImage: "chart.bar")
                 }

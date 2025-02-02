@@ -2,425 +2,374 @@ import SwiftUI
 import HealthKit
 import Charts
 
-// MARK: - Range Enum
-
-enum ProChartRange: String, CaseIterable {
-    case day = "Day"
-    case week = "Week"
-    case month = "Month"
-    case sixMonth = "6M"
-    case year = "Year"
-}
-
-// MARK: - Data Models
-
-struct ProSlice: Identifiable {
+struct StepData: Identifiable {
     let id = UUID()
     let date: Date
-    let source: String
-    let steps: Double
+    let total: Double
+    let lifespanSteps: Double
+    let otherSteps: Double
+    let label: String
 }
 
-struct ProSelection: Identifiable {
-    let id = UUID()
-    let date: Date
-    let totalSteps: Double
-}
-
-// MARK: - ViewModel
-
-class MetricsProViewModel: ObservableObject {
+struct MetricsView: View {
     private let healthStore = HKHealthStore()
-    private let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+    @State private var timeRange: TimeRange = .day
+    @State private var currentDate = Date()
+    @State private var stepData: [StepData] = []
+    @State private var selectedBar: StepData?
+    @State private var isLoading = true
+    @State private var hasPermission = false
     
-    @Published var chartRange: ProChartRange = .week
-    @Published var anchorDate = Date()    // Current reference date
-    @Published var slices: [ProSlice] = []
-    @Published var selected: ProSelection? = nil
-    @Published var isLoading = false
-    
-    private var didRequestAuth = false
-    
-    func onAppear() {
-        if !didRequestAuth {
-            didRequestAuth = true
-            requestAuthorization()
-        } else {
-            fetchAllData()
-        }
+    enum TimeRange: String, CaseIterable {
+        case day = "D"
+        case week = "W"
+        case month = "M"
+        case sixMonth = "6M"
+        case year = "Y"
     }
-    
-    func setRange(_ range: ProChartRange) {
-        chartRange = range
-        anchorDate = Date()  // Typically reset to "now" in Apple Health style
-        fetchAllData()
-    }
-    
-    func tapBar(at date: Date) {
-        // Sum the “Lifespan Arduino” + “All Other” slices for that date bucket
-        let bucketSlices = slices.filter { sameBucket($0.date, date) }
-        let total = bucketSlices.reduce(0) { $0 + $1.steps }
-        if !bucketSlices.isEmpty {
-            selected = ProSelection(date: date, totalSteps: total)
-        }
-    }
-    
-    func goLeft() {
-        anchorDate = shiftRange(date: anchorDate, left: true)
-        fetchAllData()
-    }
-    
-    func goRight() {
-        anchorDate = shiftRange(date: anchorDate, left: false)
-        fetchAllData()
-    }
-    
-    // MARK: - HealthKit
-    
-    private func requestAuthorization() {
-        let toRead: Set<HKObjectType> = [stepType]
-        healthStore.requestAuthorization(toShare: [], read: toRead) { success, error in
-            DispatchQueue.main.async {
-                if success {
-                    self.fetchAllData()
-                } else {
-                    print("HealthKit authorization denied or failed: \(error?.localizedDescription ?? "")")
-                }
-            }
-        }
-    }
-    
-    private func fetchAllData() {
-        isLoading = true
-        slices = []
-        selected = nil
-        
-        let group = DispatchGroup()
-        
-        var totalMap: [Date: Double] = [:]
-        var deviceMap: [Date: Double] = [:]
-        
-        let (start, end, interval) = dateIntervalForRange(chartRange, anchor: anchorDate)
-        
-        // 1) All sources
-        group.enter()
-        fetchSteps(start: start, end: end, interval: interval, sourceName: nil) { map in
-            totalMap = map
-            group.leave()
-        }
-        
-        // 2) Lifespan Arduino
-        group.enter()
-        fetchSteps(start: start, end: end, interval: interval, sourceName: "Lifespan Arduino") { map in
-            deviceMap = map
-            group.leave()
-        }
-        
-        group.notify(queue: .main) {
-            self.buildSlices(totalMap: totalMap, deviceMap: deviceMap)
-            self.isLoading = false
-        }
-    }
-    
-    private func fetchSteps(start: Date,
-                            end: Date,
-                            interval: DateComponents,
-                            sourceName: String?,
-                            completion: @escaping ([Date: Double]) -> Void) {
-        var predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-        
-        if let name = sourceName {
-            let srcQuery = HKSourceQuery(sampleType: stepType, samplePredicate: nil) {
-                [weak self] _, sourcesOrNil, error in
-                guard let self = self, let sources = sourcesOrNil, error == nil else {
-                    completion([:])
-                    return
-                }
-                if let devSrc = sources.first(where: { $0.name == name }) {
-                    let sPred = HKQuery.predicateForObjects(from: devSrc)
-                    predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [predicate, sPred])
-                } else {
-                    // Not found
-                    completion([:])
-                    return
-                }
-                self.executeStatsQuery(start: start, end: end, interval: interval, predicate: predicate, completion: completion)
-            }
-            healthStore.execute(srcQuery)
-        } else {
-            executeStatsQuery(start: start, end: end, interval: interval, predicate: predicate, completion: completion)
-        }
-    }
-    
-    private func executeStatsQuery(start: Date,
-                                   end: Date,
-                                   interval: DateComponents,
-                                   predicate: NSPredicate,
-                                   completion: @escaping ([Date: Double]) -> Void) {
-        let query = HKStatisticsCollectionQuery(quantityType: stepType,
-                                                quantitySamplePredicate: predicate,
-                                                options: .cumulativeSum,
-                                                anchorDate: start,
-                                                intervalComponents: interval)
-        
-        query.initialResultsHandler = { _, results, error in
-            guard let statsCollection = results, error == nil else {
-                completion([:])
-                return
-            }
-            
-            var map: [Date: Double] = [:]
-            statsCollection.enumerateStatistics(from: start, to: end) { stats, _ in
-                if let sum = stats.sumQuantity() {
-                    map[stats.startDate] = sum.doubleValue(for: .count())
-                }
-            }
-            completion(map)
-        }
-        
-        healthStore.execute(query)
-    }
-    
-    private func buildSlices(totalMap: [Date: Double], deviceMap: [Date: Double]) {
-        let allKeys = Set(totalMap.keys).union(deviceMap.keys).sorted()
-        var final: [ProSlice] = []
-        
-        for date in allKeys {
-            let total = totalMap[date] ?? 0
-            let device = deviceMap[date] ?? 0
-            let other = max(total - device, 0)
-            
-            final.append(ProSlice(date: date, source: "Lifespan Arduino", steps: device))
-            final.append(ProSlice(date: date, source: "All Other Sources", steps: other))
-        }
-        slices = final
-    }
-    
-    // MARK: - Date Range Logic
-    
-    private func dateIntervalForRange(_ range: ProChartRange, anchor: Date)
-    -> (Date, Date, DateComponents)
-    {
-        let cal = Calendar.current
-        
-        switch range {
-        case .day:
-            let startOfDay = cal.startOfDay(for: anchor)
-            guard let nextDay = cal.date(byAdding: .day, value: 1, to: startOfDay) else {
-                return (startOfDay, anchor, DateComponents(hour: 1))
-            }
-            return (startOfDay, nextDay, DateComponents(hour: 1))
-            
-        case .week:
-            let dayAnchor = cal.startOfDay(for: anchor)
-            guard let start = cal.date(byAdding: .day, value: -6, to: dayAnchor) else {
-                return (dayAnchor, dayAnchor, DateComponents(day: 1))
-            }
-            return (start, dayAnchor, DateComponents(day: 1))
-            
-        case .month:
-            let dayAnchor = cal.startOfDay(for: anchor)
-            guard let start = cal.date(byAdding: .day, value: -29, to: dayAnchor) else {
-                return (dayAnchor, dayAnchor, DateComponents(day: 1))
-            }
-            return (start, dayAnchor, DateComponents(day: 1))
-            
-        case .sixMonth:
-            let monthStart = cal.date(bySetting: .day, value: 1, of: anchor) ?? anchor
-            guard let earliest = cal.date(byAdding: .month, value: -5, to: monthStart) else {
-                return (monthStart, anchor, DateComponents(month: 1))
-            }
-            return (earliest, monthStart, DateComponents(month: 1))
-            
-        case .year:
-            let monthStart = cal.date(bySetting: .day, value: 1, of: anchor) ?? anchor
-            guard let earliest = cal.date(byAdding: .month, value: -11, to: monthStart) else {
-                return (monthStart, anchor, DateComponents(month: 1))
-            }
-            return (earliest, monthStart, DateComponents(month: 1))
-        }
-    }
-    
-    private func shiftRange(date: Date, left: Bool) -> Date {
-        let cal = Calendar.current
-        let delta = left ? -1 : 1
-        
-        switch chartRange {
-        case .day:
-            return cal.date(byAdding: .day, value: delta, to: date) ?? date
-        case .week:
-            return cal.date(byAdding: .day, value: 7 * delta, to: date) ?? date
-        case .month:
-            return cal.date(byAdding: .month, value: delta, to: date) ?? date
-        case .sixMonth:
-            return cal.date(byAdding: .month, value: 6 * delta, to: date) ?? date
-        case .year:
-            return cal.date(byAdding: .year, value: delta, to: date) ?? date
-        }
-    }
-    
-    private func sameBucket(_ d1: Date, _ d2: Date) -> Bool {
-        let cal = Calendar.current
-        switch chartRange {
-        case .day:
-            return d1 == d2
-        case .week, .month:
-            return cal.isDate(d1, inSameDayAs: d2)
-        case .sixMonth, .year:
-            let c1 = cal.dateComponents([.year, .month], from: d1)
-            let c2 = cal.dateComponents([.year, .month], from: d2)
-            return c1.year == c2.year && c1.month == c2.month
-        }
-    }
-}
-
-// MARK: - The View
-
-struct MetricsProView: View {
-    @StateObject private var vm = MetricsProViewModel()
-    
-    // For left/right swipes
-    @GestureState private var dragOffset: CGFloat = 0
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Segmented control
-                Picker("", selection: $vm.chartRange) {
-                    ForEach(ProChartRange.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding()
-                .onChange(of: vm.chartRange) { newValue in
-                    vm.setRange(newValue)
-                }
-                
-                // Selected bar info
-                if let sel = vm.selected {
-                    VStack {
-                        Text(formatSelected(sel.date))
-                            .font(.headline)
-                        Text("Steps: \(Int(sel.totalSteps))")
-                            .font(.subheadline)
-                    }
-                    .padding(.vertical, 6)
-                }
-                
-                // Main chart area
-                if vm.isLoading && vm.slices.isEmpty {
-                    ProgressView("Fetching data…")
-                        .padding()
-                } else if vm.slices.isEmpty {
-                    Text("No Data")
-                        .padding()
-                } else {
-                    chartView
-                        // Give more horizontal margin
-                        .padding(.horizontal, 16)
-                        // Some vertical spacing
-                        .padding(.bottom, 10)
-                        .frame(height: 300)
-                        // Left/right swipe
-                        .gesture(
-                            DragGesture(minimumDistance: 50)
-                                .updating($dragOffset) { val, state, _ in
-                                    state = val.translation.width
-                                }
-                                .onEnded { val in
-                                    if val.translation.width < 0 {
-                                        vm.goLeft()  // older
-                                    } else {
-                                        vm.goRight() // newer
-                                    }
-                                }
-                        )
-                }
-                
-                Spacer()
+        VStack(spacing: 16) {
+            if !hasPermission {
+                permissionView
+            } else if isLoading {
+                ProgressView("Loading data...")
+            } else {
+                dataView
             }
-            .navigationBarTitle("Metrics Pro", displayMode: .inline)
         }
         .onAppear {
-            vm.onAppear()
+            requestHealthKitPermission()
         }
     }
     
-    // MARK: - The Chart
+    private var permissionView: some View {
+        VStack(spacing: 16) {
+            Text("Permission Required")
+                .font(.headline)
+            Button("Grant Permission") {
+                requestHealthKitPermission()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+    
+    private var dataView: some View {
+        VStack(spacing: 16) {
+            if let selected = selectedBar {
+                selectedDataView(selected)
+            }
+            
+            timeRangeSelector
+            
+            dateNavigator
+            
+            chartView
+        }
+        .padding()
+    }
+    
+    private func selectedDataView(_ data: StepData) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(formatDate(data.date))
+                .font(.headline)
+            
+            Text("Total Steps: \(Int(data.total))")
+            Text("Lifespan Steps: \(Int(data.lifespanSteps))")
+            Text("Other Steps: \(Int(data.otherSteps))")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(10)
+    }
+    
+    private var timeRangeSelector: some View {
+        HStack {
+            ForEach(TimeRange.allCases, id: \.self) { range in
+                Button(range.rawValue) {
+                    withAnimation {
+                        timeRange = range
+                        fetchHealthData()
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(timeRange == range ? Color.blue : Color.gray.opacity(0.2))
+                .foregroundColor(timeRange == range ? .white : .primary)
+                .cornerRadius(8)
+            }
+        }
+    }
+    
+    private var dateNavigator: some View {
+        HStack {
+            Button {
+                navigateDate(forward: false)
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            
+            Spacer()
+            Text(getDateRangeText())
+                .font(.headline)
+            Spacer()
+            
+            Button {
+                navigateDate(forward: true)
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+        }
+    }
     
     private var chartView: some View {
-        Chart(vm.slices) { slice in
-            BarMark(
-                x: .value("Date", slice.date),
-                y: .value("Steps", slice.steps)
-            )
-            .foregroundStyle(by: .value("Source", slice.source))
-            .position(by: .value("Source", slice.source))  // stacked bars
-        }
-        // In iOS16, no .chartYAxis(.hidden), so we manually hide lines/ticks:
-        .chartYAxis {
-            AxisMarks { _ in
-                AxisGridLine().foregroundStyle(.clear)
-                AxisTick().foregroundStyle(.clear)
-                AxisValueLabel().foregroundStyle(.clear)
+        Chart {
+            ForEach(stepData) { data in
+                BarMark(
+                    x: .value("Time", data.label),
+                    y: .value("Steps", data.lifespanSteps)
+                )
+                .foregroundStyle(Color.blue)
+                
+                BarMark(
+                    x: .value("Time", data.label),
+                    y: .value("Steps", data.otherSteps)
+                )
+                .foregroundStyle(Color.green)
             }
         }
-        // Hide x-axis lines/labels
-        .chartXAxis {
-            AxisMarks(values: xAxisValues()) { _ in
-                AxisGridLine().foregroundStyle(.clear)
-                AxisTick().foregroundStyle(.clear)
-                AxisValueLabel().foregroundStyle(.clear)
-            }
-        }
-        // Tap detection overlay
+        .frame(height: 200)
         .chartOverlay { proxy in
-            GeometryReader { geo in
-                Rectangle()
-                    .fill(.clear)
-                    .contentShape(Rectangle())
+            GeometryReader { geometry in
+                Rectangle().fill(.clear).contentShape(Rectangle())
                     .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onEnded { val in
-                                // Convert the drag location to chart X
-                                let localX = val.location.x - geo[proxy.plotAreaFrame].origin.x
-                                if let tappedDate: Date = proxy.value(atX: localX) {
-                                    vm.tapBar(at: tappedDate)
+                        DragGesture()
+                            .onEnded { value in
+                                let threshold: CGFloat = 50
+                                if value.translation.width > threshold {
+                                    navigateDate(forward: false)
+                                } else if value.translation.width < -threshold {
+                                    navigateDate(forward: true)
                                 }
                             }
                     )
             }
         }
-        // Slightly lighter background to mimic Apple Health
-        .background(Color(UIColor.systemGray6))
-        .cornerRadius(8)
-    }
-    
-    // Minimal x-axis values
-    private func xAxisValues() -> [Date] {
-        let domainDates = vm.slices.map { $0.date }
-        return Array(Set(domainDates)).sorted()
-    }
-    
-    // MARK: - Formatting the selected date label
-    
-    private func formatSelected(_ date: Date) -> String {
-        let f = DateFormatter()
-        switch vm.chartRange {
-        case .day:
-            f.dateFormat = "MMM d, h a"
-        case .week, .month:
-            f.dateFormat = "MMM d"
-        case .sixMonth, .year:
-            f.dateFormat = "MMM yyyy"
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onTapGesture { location in
+                        let relativeX = location.x - geometry.frame(in: .local).origin.x
+                        if let index = getDataIndex(for: relativeX, width: geometry.size.width) {
+                            selectedBar = stepData[index]
+                        }
+                    }
+            }
         }
-        return f.string(from: date)
     }
-}
-
-struct MetricsProView_Previews: PreviewProvider {
-    static var previews: some View {
-        MetricsProView()
+    
+    private func requestHealthKitPermission() {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let typesToRead: Set = [stepType]
+        
+        healthStore.requestAuthorization(toShare: nil, read: typesToRead) { success, error in
+            DispatchQueue.main.async {
+                hasPermission = success
+                if success {
+                    fetchHealthData()
+                }
+            }
+        }
+    }
+    
+    private func getDateRange() -> (start: Date, end: Date, interval: DateComponents) {
+        let calendar = Calendar.current
+        let now = currentDate
+        
+        switch timeRange {
+        case .day:
+            let start = calendar.startOfDay(for: now)
+            let end = calendar.date(byAdding: .day, value: 1, to: start)!
+            return (start, end, DateComponents(hour: 1))
+            
+        case .week:
+            let start = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now))!
+            let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
+            return (start, end, DateComponents(day: 1))
+            
+        case .month:
+            let start = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+            let end = calendar.date(byAdding: .month, value: 1, to: start)!
+            return (start, end, DateComponents(day: 1))
+            
+        case .sixMonth:
+            let start = calendar.date(byAdding: .month, value: -5, to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
+            let end = calendar.date(byAdding: .month, value: 1, to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
+            return (start, end, DateComponents(month: 1))
+            
+        case .year:
+            let start = calendar.date(byAdding: .month, value: -11, to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
+            let end = calendar.date(byAdding: .month, value: 1, to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
+            return (start, end, DateComponents(month: 1))
+        }
+    }
+    
+    private func navigateDate(forward: Bool) {
+        let calendar = Calendar.current
+        
+        switch timeRange {
+        case .day:
+            currentDate = calendar.date(byAdding: .day, value: forward ? 1 : -1, to: currentDate)!
+        case .week:
+            currentDate = calendar.date(byAdding: .day, value: forward ? 7 : -7, to: currentDate)!
+        case .month:
+            currentDate = calendar.date(byAdding: .month, value: forward ? 1 : -1, to: currentDate)!
+        case .sixMonth:
+            currentDate = calendar.date(byAdding: .month, value: forward ? 6 : -6, to: currentDate)!
+        case .year:
+            currentDate = calendar.date(byAdding: .year, value: forward ? 1 : -1, to: currentDate)!
+        }
+        
+        fetchHealthData()
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return formatter.string(from: date)
+    }
+    
+    private func formatLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        
+        switch timeRange {
+        case .day:
+            formatter.dateFormat = "HH:00"
+        case .week:
+            formatter.dateFormat = "EEE"
+        case .month:
+            formatter.dateFormat = "d"
+        case .sixMonth, .year:
+            formatter.dateFormat = "MMM"
+        }
+        
+        return formatter.string(from: date)
+    }
+    
+    private func getDateRangeText() -> String {
+        let formatter = DateFormatter()
+        
+        switch timeRange {
+        case .day:
+            formatter.dateFormat = "MMMM d, yyyy"
+            return formatter.string(from: currentDate)
+        case .week:
+            formatter.dateFormat = "MMM d"
+            let endDate = Calendar.current.date(byAdding: .day, value: 6, to: currentDate)!
+            return "\(formatter.string(from: currentDate)) - \(formatter.string(from: endDate))"
+        case .month:
+            formatter.dateFormat = "MMMM yyyy"
+            return formatter.string(from: currentDate)
+        case .sixMonth:
+            formatter.dateFormat = "MMM yyyy"
+            let startDate = Calendar.current.date(byAdding: .month, value: -5, to: currentDate)!
+            return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
+        case .year:
+            formatter.dateFormat = "MMM yyyy"
+            let startDate = Calendar.current.date(byAdding: .month, value: -11, to: currentDate)!
+            return "\(formatter.string(from: startDate)) - \(formatter.string(from: currentDate))"
+        }
+    }
+    
+    private func getDataIndex(for xPosition: CGFloat, width: CGFloat) -> Int? {
+        let stepWidth = width / CGFloat(stepData.count)
+        let index = Int(xPosition / stepWidth)
+        guard index >= 0 && index < stepData.count else { return nil }
+        return index
+    }
+    
+    private func fetchHealthData() {
+        isLoading = true
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        
+        let (startDate, endDate, intervalComponents) = getDateRange()
+        
+        // Query for total steps
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        
+        let totalStepsQuery = HKStatisticsCollectionQuery(
+            quantityType: stepType,
+            quantitySamplePredicate: predicate,
+            options: .cumulativeSum,
+            anchorDate: startDate,
+            intervalComponents: intervalComponents
+        )
+        
+        // Query for Lifespan steps
+        let sourcePredicate = HKQuery.predicateForObjects(
+            withMetadataKey: HKMetadataKeyDeviceManufacturerName,
+            allowedValues: ["LifespanArduino"]
+        )
+        let combinedPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            predicate,
+            sourcePredicate
+        ])
+        
+        let lifespanStepsQuery = HKStatisticsCollectionQuery(
+            quantityType: stepType,
+            quantitySamplePredicate: combinedPredicate,
+            options: .cumulativeSum,
+            anchorDate: startDate,
+            intervalComponents: intervalComponents
+        )
+        
+        var tempData: [Date: (total: Double, lifespan: Double)] = [:]
+        
+        let group = DispatchGroup()
+        
+        // Fetch total steps
+        group.enter()
+        totalStepsQuery.initialResultsHandler = { (query: HKStatisticsCollectionQuery, results: HKStatisticsCollection?, error: Error?) in
+            if let results = results {
+                results.enumerateStatistics(from: startDate, to: endDate) { statistics, stop in
+                    if let sum = statistics.sumQuantity()?.doubleValue(for: HKUnit.count()) {
+                        tempData[statistics.startDate] = (sum, tempData[statistics.startDate]?.lifespan ?? 0)
+                    }
+                }
+            }
+            group.leave()
+        }
+        
+        // Fetch Lifespan steps
+        group.enter()
+        lifespanStepsQuery.initialResultsHandler = { (query: HKStatisticsCollectionQuery, results: HKStatisticsCollection?, error: Error?) in
+            if let results = results {
+                results.enumerateStatistics(from: startDate, to: endDate) { statistics, stop in
+                    if let sum = statistics.sumQuantity()?.doubleValue(for: HKUnit.count()) {
+                        let total = tempData[statistics.startDate]?.total ?? 0
+                        tempData[statistics.startDate] = (total, sum)
+                    }
+                }
+            }
+            group.leave()
+        }
+        
+        group.notify(queue: .main) {
+            stepData = tempData.map { date, values in
+                StepData(
+                    date: date,
+                    total: values.total,
+                    lifespanSteps: values.lifespan,
+                    otherSteps: values.total - values.lifespan,
+                    label: formatLabel(date)
+                )
+            }.sorted { $0.date < $1.date }
+            
+            isLoading = false
+        }
+        
+        healthStore.execute(totalStepsQuery)
+        healthStore.execute(lifespanStepsQuery)
     }
 }
