@@ -1,0 +1,46 @@
+#--------------------------------------
+# macOS
+#--------------------------------------
+.DS_Store
+.idea/
+.idea
+
+#--------------------------------------
+# Build & Derived Data
+#--------------------------------------
+build/
+DerivedData/
+
+#--------------------------------------
+# Xcode-specific
+#--------------------------------------
+# User-specific settings
+*.xcuserdatad/
+*.xcscmblueprint
+*.xccheckout
+
+# Xcode workspace settings
+*.xcworkspace/xcuserdata/
+
+#--------------------------------------
+# Swift Packages
+#--------------------------------------
+# Xcode automatically generates and manages these
+Packages/
+Package.pins
+Package.resolved
+
+# Sometimes Swift packages are stored as .xcpackage
+*.xcpackage
+
+#--------------------------------------
+# Other
+#--------------------------------------
+*.swp
+*.swo
+*.log
+
+# Optional: If you use CocoaPods, ignore these:
+# Pods/
+# Podfile.lock
+
