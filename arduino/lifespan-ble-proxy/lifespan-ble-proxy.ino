@@ -25,7 +25,12 @@
 #include <EEPROM.h>
 #include <time.h>  // For local time functions
 #include <LiquidCrystal_I2C.h>
+#include <HardwareSerial.h>
 LiquidCrystal_I2C lcd(0x27,20,4);
+
+
+#define RETRO_MODE 1     // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
+
 
 // WiFi Credentials
 const char* ssid = "Angela";
@@ -35,6 +40,7 @@ const char* password = "iloveblake";
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 0, 60000); // UTC, update every 60s
 
+
 // ARDUINO NANO PINOUT
 #define BUTTON_PIN 2 // D2
 #define CLEAR_PIN  3 // D3  - Clears all sessions in EEPROM
@@ -43,6 +49,35 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org", 0, 60000); // UTC, update every 60s
 #define EEPROM_SIZE        512
 #define MAX_SESSIONS       42
 #define SESSION_SIZE_BYTES 12
+
+
+#ifdef RETRO_MODE
+  // RETRO VERSION UART CONFIGURATION
+  #define RX1PIN 20  // A0, GPIO1, D17
+  #define TX1PIN 6  // NOT ACTUALLY NEEDED!
+  #define RX2PIN 23  // A2, GPIO3, D19
+  #define TX2PIN 8  // NOT ACTUALLY NEEDED
+  int steps = 0;
+  int shouldIUpdateCounter = 0;
+  // Define the UART instances
+  HardwareSerial uart1(1); // UART1 - RED = CONSOLE TX
+  HardwareSerial uart2(2); // UART2 - ORANGE = TREADMILL TX
+  // Command buffers
+  String uart1Buffer = "";
+  String uart2Buffer = "";
+  int uart1RxCnt = 0;
+  int uart2RxCnt = 0;
+  #define CMD_BUF_SIZE 10
+  byte uart1Buf[CMD_BUF_SIZE];
+  byte uart2Buf[CMD_BUF_SIZE];
+  int lastRequestType;
+  #define LAST_REQUEST_IS_STEPS 1
+  #define LAST_REQUEST_IS_SPEED 2
+  #define LAST_REQUEST_IS_DISTANCE 3
+  #define LAST_REQUEST_IS_TIME 4
+  #define STEPS_STARTSWITH "1 3 0 15"
+  //---------------------------------------
+#endif
 
 struct TreadmillSession {
   uint32_t start;
@@ -66,6 +101,7 @@ bool haveNotifiedFirstPacket = false;
 
 int currentSessionIndex = 0;
 bool clearedSessions = false;
+int loopCounter=0; // used for timing in main loop
 
 
 // ---------------------------------------------------------------------------
@@ -362,6 +398,14 @@ void updateLcd() {
   lcd.printf("Sessions: %d", currentSessionIndex);
 }
 
+#define RED_LED 14
+#define BLUE_LED 15
+#define GREEN_LED 16
+void toggleLedColor(uint8_t color) {
+    pinMode(color, OUTPUT);  // Ensure the pin is set as an output
+    digitalWrite(color, !digitalRead(color));  // Toggle the LED state
+}
+
 
 // ---------------------------------------------------------------------------
 // Setup / Loop
@@ -377,6 +421,16 @@ void setup() {
     lcd.init();
     lcd.clear();
     lcd.backlight();
+
+    #ifdef ARDUINO_ARDUINO_NANO_ESP32
+      Serial.println("NANO_ESP32 Detected");
+    #endif
+
+    #ifdef RETRO_MODE
+      Serial.println("RETRO Serial Enabled");
+      uart1.begin(4800, SERIAL_8N1, RX1PIN, TX1PIN);
+      uart2.begin(4800, SERIAL_8N1, RX2PIN, TX2PIN);
+    #endif
 
     // Initialize EEPROM
     EEPROM.begin(EEPROM_SIZE);
@@ -428,9 +482,8 @@ void setup() {
   updateLcd();
 }
 
-int loopCounter=0;
 void loop() {
-    // Update NTP time every 10 seconds
+    // Update NTP time every minute
   if ((loopCounter++%3000 == 0) && WiFi.status() == WL_CONNECTED ) {
       timeClient.update();
       Serial.print("Current Time: ");
@@ -472,7 +525,74 @@ void loop() {
     indicateNextSession();
   }
 
+  #ifdef RETRO_MODE
+  // Check if data is available on UART1
+    while (uart1.available() > 0) {
+      char receivedChar = uart1.read();
+    // Serial.printf("1>%02X\n", receivedChar);
+      uart1Buf[uart1RxCnt%CMD_BUF_SIZE] = receivedChar;
+      uart1RxCnt += 1;
+      uart1Buffer += String(receivedChar, DEC) + " ";
+      if( uart2RxCnt > 0 ) {
+        processResponse();
+      }
+    }
+
+    // // Check if data is available on UART2
+    while (uart2.available() > 0) {
+      char receivedChar = uart2.read();
+    // Serial.printf("2>%02X\n", receivedChar);
+      uart2Buf[uart2RxCnt%CMD_BUF_SIZE] = receivedChar;
+      uart2Buffer += String(receivedChar, DEC) + " ";
+      uart2RxCnt += 1;
+      // Print the UART1 Command
+      if(uart1RxCnt > 0 ) {
+        processRequest();
+      }
+    }
+  #endif
+
+
   delay(20);
 }
+
+
+#ifdef RETRO_MODE
+  void processRequest() {
+    //Serial.print(timeClient.getFormattedTime());
+    Serial.print(" REQ : ");
+    Serial.println(uart1Buffer);
+   // toggleLedColor(BLUE_LED);
+
+    if( uart1Buffer.startsWith(STEPS_STARTSWITH) ) {
+      lastRequestType = LAST_REQUEST_IS_STEPS;
+    }
+    else {
+      lastRequestType = 0;
+    }
+
+    uart1Buffer = ""; // Clear the buffer
+    uart1RxCnt = 0;
+  }
+
+  void processResponse() {
+    //Serial.print(timeClient.getFormattedTime());
+    Serial.print(" RESP: ");
+    Serial.println(uart2Buffer);
+    //toggleLedColor(GREEN_LED);
+
+    if( lastRequestType == LAST_REQUEST_IS_STEPS ) {
+      steps = uart2Buf[3]*256 + uart2Buf[4];
+      //Serial.print("STEPS: ");
+      //Serial.println(steps);
+      lastRequestType = 0;
+      if( shouldIUpdateCounter++ % 2 ) {
+        updateLcd();
+      }
+    }
+    uart2Buffer = ""; // Clear the buffer
+    uart2RxCnt = 0;
+  }
+#endif
 
 
