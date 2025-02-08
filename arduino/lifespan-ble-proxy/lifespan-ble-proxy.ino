@@ -22,12 +22,16 @@
 #include <EEPROM.h>
 #include <time.h>  // For time() function (requires time sync for accurate local time)
 
+
+// ARDUINO NANO PINOUT
+#define BUTTON_PIN 2 // D2
+#define CLEAR_PIN  3 // D3  - clears all sessions in EEPROM.
+
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 #define EEPROM_SIZE        512
-#define BUTTON_PIN         0     // Built-in flash button on many ESP32 dev boards
-#define CLEAR_PIN          12    // If GPIO12 is HIGH, clear all sessions in EEPROM
 #define MAX_SESSIONS       42    // Up to 42 sessions (12 bytes each) + 4 bytes for count
 #define SESSION_SIZE_BYTES 12    // start(4) + stop(4) + steps(4)
 
