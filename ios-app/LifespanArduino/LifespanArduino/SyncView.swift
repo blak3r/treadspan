@@ -7,9 +7,13 @@ struct SyncView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Circle()
-                .fill(Color.gray)
+            Image("betterspan_fit_round_v1") // Use the name of your image asset
+                .resizable()
+                .scaledToFit()
                 .frame(width: 100, height: 100)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.white, lineWidth: 2)) // Optional border
+                .shadow(radius: 5) // Optional shadow
 
             Text("BetterSpan Fit")
                 .font(.largeTitle)
@@ -59,6 +63,7 @@ struct SyncView: View {
     }
 }
 
+// MARK: - Session Data Model
 struct Session: Identifiable {
     let id = UUID()
     let start: UInt32
@@ -72,7 +77,6 @@ struct Session: Identifiable {
 
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "MM/dd/yyyy H:mm:ss"
-
         let startString = dateFormatter.string(from: startDate)
         let durationStr = Self.humanize(seconds: durationSec)
 
@@ -97,6 +101,7 @@ struct Session: Identifiable {
     }
 }
 
+// MARK: - BLE ViewModel
 class BLEViewModel: NSObject, ObservableObject {
     @Published var statusMessage: String = "Idle"
     @Published var sessions: [Session] = []
@@ -107,21 +112,27 @@ class BLEViewModel: NSObject, ObservableObject {
     private var dataCharacteristic: CBCharacteristic?
     private var confirmCharacteristic: CBCharacteristic?
 
+    // Treadmill Service/Characteristics
     private let serviceUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdef0")
     private let dataCharUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdef1")
     private let confirmCharUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdef2")
 
+    // Temporary storage for fetched sessions
     private var fetchedSessions: [Session] = []
 
     // HealthKit
     private let healthStore = HKHealthStore()
     private let stepType = HKObjectType.quantityType(forIdentifier: .stepCount)!
 
+    // Track whether we discovered any device to avoid overwriting messages with "No Treadmill found."
+    private var didDiscoverDevice = false
+
     override init() {
         super.init()
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
 
+    // MARK: - Public Methods
     func fetchAndSaveSessions() {
         guard centralManager.state == .poweredOn else {
             statusMessage = "Bluetooth not ready."
@@ -131,24 +142,25 @@ class BLEViewModel: NSObject, ObservableObject {
         statusMessage = "Scanning for Treadmill..."
         fetchedSessions.removeAll()
         sessions.removeAll()
+        didDiscoverDevice = false
 
         centralManager.scanForPeripherals(withServices: [serviceUUID], options: nil)
 
+        // If no device is discovered after 10s, declare "No Treadmill found."
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
             self.centralManager.stopScan()
-            if self.peripheral == nil {
+            if !self.didDiscoverDevice && self.peripheral == nil {
                 self.statusMessage = "No Treadmill found."
             }
         }
     }
 
-    private func processFetchedData(_ data: Data) {
-        print("Raw data: \(data.map { String(format: "%02X", $0) }.joined()) (length: \(data.count))")
+    // 12-byte session packets
+    private func processSessionPacket(_ data: Data) {
         guard data.count == 12 else {
-            print("Invalid data length. Expected 12, got \(data.count).")
+            print("Invalid data length (expected 12).")
             return
         }
-
         let start = data.subdata(in: 0..<4).withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
         let stop  = data.subdata(in: 4..<8).withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
         let steps = data.subdata(in: 8..<12).withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
@@ -166,22 +178,73 @@ class BLEViewModel: NSObject, ObservableObject {
             print("Cannot confirm session: Missing characteristic/peripheral.")
             return
         }
-        let ackData = Data([0x01])
+
+        let ackData = Data([0x01])  // Acknowledge
         peripheral.writeValue(ackData, for: confirmChar, type: .withResponse)
         print("Attempting to write 0x01 to confirmCharacteristic...")
     }
 
-    // MARK: - HealthKit Step Saving
+    private func handleDoneMarker() {
+        // If we got the done marker but no sessions are stored, say "No sessions to sync."
+        if fetchedSessions.isEmpty {
+            statusMessage = "No sessions to sync."
+        } else {
+            statusMessage = "All sessions retrieved."
+        }
+        print("Done marker received from peripheral. Disconnecting...")
+
+        // Disconnect
+        if let peripheral = peripheral {
+            centralManager.cancelPeripheralConnection(peripheral)
+        }
+    }
+
+    // MARK: - HealthKit
     func saveToHealthKit() {
-        // 1) Check if Health Data is available on this device
         guard HKHealthStore.isHealthDataAvailable() else {
             print("Health data not available on this device.")
             return
         }
 
-        // 2) Request authorization if needed
-        let writeTypes: Set<HKSampleType> = [stepType] // We only want to write steps
-        healthStore.requestAuthorization(toShare: writeTypes, read: nil) { [weak self] success, error in
+        let writeTypes: Set<HKSampleType> = [stepType]
+
+        if #available(iOS 12.0, *) {
+            // Check if we need to request authorization
+            healthStore.getRequestStatusForAuthorization(toShare: writeTypes, read: []) { [weak self] status, error in
+                guard let self = self else { return }
+
+                if let error = error {
+                    print("Error checking HK authorization status: \(error.localizedDescription)")
+                    return
+                }
+
+                switch status {
+                case .shouldRequest:
+                    // The user has not previously chosen to grant or deny authorization
+                    print("User has not seen the HealthKit permission prompt yet.")
+                    self.requestHKAuthorization(writeTypes)
+                case .unnecessary:
+                    // Authorization already granted for these types
+                    print("HealthKit authorization already granted. Saving sessions...")
+                    self.saveAllSessionsAsSteps()
+                case .unknown:
+                    // Could not determine status; try requesting anyway
+                    print("HealthKit authorization status unknown, requesting anyway.")
+                    self.requestHKAuthorization(writeTypes)
+                @unknown default:
+                    print("New authorization status not handled; requesting anyway.")
+                    self.requestHKAuthorization(writeTypes)
+                }
+            }
+        } else {
+            // iOS 11 or earlier fallback
+            // The user won’t typically see the prompt again if they've already made a decision
+            requestHKAuthorization(writeTypes)
+        }
+    }
+
+    private func requestHKAuthorization(_ writeTypes: Set<HKSampleType>) {
+        healthStore.requestAuthorization(toShare: writeTypes, read: nil) { [weak self] (success, error) in
             guard let self = self else { return }
 
             if let error = error {
@@ -192,11 +255,11 @@ class BLEViewModel: NSObject, ObservableObject {
                 print("User did not grant HealthKit authorization.")
                 return
             }
-
-            // 3) Save each session as an HKQuantitySample for stepCount
+            // Now authorized, so save
             self.saveAllSessionsAsSteps()
         }
     }
+
 
     private func saveAllSessionsAsSteps() {
         guard !sessions.isEmpty else {
@@ -216,7 +279,7 @@ class BLEViewModel: NSObject, ObservableObject {
 
             healthStore.save(stepSample) { success, error in
                 if success {
-                    print("Saved \(session.steps) steps to HealthKit from \(startDate) - \(endDate)")
+                    print("Saved \(session.steps) steps to HealthKit: \(startDate) - \(endDate)")
                 } else {
                     print("Failed saving steps: \(String(describing: error?.localizedDescription))")
                 }
@@ -251,6 +314,7 @@ extension BLEViewModel: CBCentralManagerDelegate {
                         advertisementData: [String : Any],
                         rssi RSSI: NSNumber) {
         print("Discovered device: \(peripheral.name ?? "Unknown") - \(peripheral.identifier)")
+        didDiscoverDevice = true  // We found a device
         centralManager.stopScan()
 
         self.peripheral = peripheral
@@ -260,23 +324,28 @@ extension BLEViewModel: CBCentralManagerDelegate {
         statusMessage = "Connecting to \(peripheral.name ?? "Treadmill")..."
     }
 
-    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    func centralManager(_ central: CBCentralManager,
+                        didConnect peripheral: CBPeripheral) {
         statusMessage = "Connected to \(peripheral.name ?? "Treadmill")"
         print("CentralManager: connected to \(peripheral.name ?? "(no name)")")
 
         peripheral.discoverServices([serviceUUID])
     }
 
-    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+    func centralManager(_ central: CBCentralManager,
+                        didFailToConnect peripheral: CBPeripheral,
+                        error: Error?) {
         statusMessage = "Failed to connect."
         self.peripheral = nil
         print("Connection failed: \(error?.localizedDescription ?? "Unknown error")")
     }
 
-    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        statusMessage = "Disconnected."
-        self.peripheral = nil
+    func centralManager(_ central: CBCentralManager,
+                        didDisconnectPeripheral peripheral: CBPeripheral,
+                        error: Error?) {
+        // We presumably disconnected because the done marker arrived or user ended
         print("Disconnected: \(error?.localizedDescription ?? "no error")")
+        self.peripheral = nil
     }
 }
 
@@ -296,7 +365,9 @@ extension BLEViewModel: CBPeripheralDelegate {
         }
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+    func peripheral(_ peripheral: CBPeripheral,
+                    didDiscoverCharacteristicsFor service: CBService,
+                    error: Error?) {
         if let error = error {
             print("Error discovering characteristics: \(error.localizedDescription)")
             statusMessage = "Error discovering characteristics."
@@ -307,7 +378,6 @@ extension BLEViewModel: CBPeripheralDelegate {
         for characteristic in characteristics {
             if characteristic.uuid == dataCharUUID {
                 dataCharacteristic = characteristic
-                // For indicates or notifies
                 peripheral.setNotifyValue(true, for: characteristic)
                 statusMessage = "Fetching sessions..."
                 print("Data characteristic found. Attempting to enable notifications/indications.")
@@ -318,19 +388,23 @@ extension BLEViewModel: CBPeripheralDelegate {
         }
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+    func peripheral(_ peripheral: CBPeripheral,
+                    didUpdateNotificationStateFor characteristic: CBCharacteristic,
+                    error: Error?) {
         if let error = error {
             print("Error updating notification state for \(characteristic.uuid): \(error.localizedDescription)")
             return
         }
         if characteristic.isNotifying {
-            print("Indications/Notifications enabled for \(characteristic.uuid)")
+            print("Notifications/Indications enabled for \(characteristic.uuid)")
         } else {
-            print("Indications/Notifications stopped for \(characteristic.uuid)")
+            print("Notifications/Indications disabled for \(characteristic.uuid)")
         }
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+    func peripheral(_ peripheral: CBPeripheral,
+                    didUpdateValueFor characteristic: CBCharacteristic,
+                    error: Error?) {
         if let error = error {
             print("Error updating value for \(characteristic.uuid): \(error.localizedDescription)")
             return
@@ -340,15 +414,24 @@ extension BLEViewModel: CBPeripheralDelegate {
             return
         }
 
+        // If we see 0xFF => done marker
         if characteristic.uuid == dataCharUUID {
-            print("Received indicated data: \(value.map { String(format: "%02X", $0) }.joined())")
-            processFetchedData(value)
-            confirmSession()
-            statusMessage = "Session acknowledged, waiting for next..."
+            if value.count == 1 && value[0] == 0xFF {
+                handleDoneMarker()
+            } else if value.count == 12 {
+                print("Received indicated data: \(value.map { String(format: "%02X", $0) }.joined())")
+                processSessionPacket(value)
+                confirmSession()
+                statusMessage = "Session acknowledged, waiting for next..."
+            } else {
+                print("Received unknown data length = \(value.count)")
+            }
         }
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+    func peripheral(_ peripheral: CBPeripheral,
+                    didWriteValueFor characteristic: CBCharacteristic,
+                    error: Error?) {
         if let error = error {
             print("Error writing value for \(characteristic.uuid): \(error.localizedDescription)")
         } else {
