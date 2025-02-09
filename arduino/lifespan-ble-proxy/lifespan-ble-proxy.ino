@@ -17,8 +17,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <NTPClient.h>
-#include <WiFiUdp.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -31,7 +29,7 @@
 #include <HardwareSerial.h>
 LiquidCrystal_I2C lcd(0x27,20,4);
 
-
+#define LCD_ENABLED 1
 #define RETRO_MODE 1     // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
 #define LOG_SERIAL 0
 
@@ -115,6 +113,10 @@ TreadmillSession currentSession;
 // Wifi / NTP
 // ---------------------------------------------------------------------------
 void connectToWiFi() {
+    #if LCD_ENABLED
+      lcd.clear();
+      lcd.print("Connecting to WiFi");
+    #endif
     Serial.print("Connecting to WiFi...");
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
@@ -123,6 +125,10 @@ void connectToWiFi() {
         toggleLedColor(LED_RED);
     }
     Serial.println("\nConnected to WiFi!");
+    #if LCD_ENABLED
+      lcd.clear();
+      lcd.print("WIFI Connected");
+    #endif
 }
 
 // NTP Configuration
@@ -449,6 +455,7 @@ class MyServerCallbacks : public BLEServerCallbacks {
   void onDisconnect(BLEServer* pServer) override {
     deviceConnected = false;
     subscribed = false; // no longer subscribed after disconnect
+    haveNotifiedFirstPacket = false;
     Serial.println(">> Client disconnected!");
     delay(1000);
     pServer->startAdvertising();
@@ -468,6 +475,14 @@ void indicateNextSession() {
     setSessionCountInEEPROM(0);
     EEPROM.commit();
     currentSessionIndex = 0;
+    haveNotifiedFirstPacket = 0;
+
+    // Send a done marker
+    uint8_t donePayload[1] = {0xFF};
+    dataCharacteristic->setValue(donePayload, 1);
+    dataCharacteristic->notify();
+    Serial.println("All sessions indicated, sending done marker.");
+
     return;
   }
 
@@ -524,25 +539,26 @@ String getCurrentSessionElapsed() {
 }
 
 void updateLcd() {
-  //lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("BetterSpan Fit v0.9");
-  lcd.setCursor(0,1);
-  lcd.printf("Sessions To Sync: %2d", sessionsStored);
-  if( isTreadmillActive ) {
+  #if LCD_ENABLED
+    //lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("BetterSpan Fit v0.9");
+    lcd.setCursor(0,1);
+    lcd.printf("Sessions To Sync: %2d", sessionsStored);
+    if( isTreadmillActive ) {
     lcd.setCursor(0,2);
     lcd.printf( "%s %s   ", getFormattedTime().c_str(), getCurrentSessionElapsed() );
     lcd.setCursor(0,3);
     lcd.printf("Steps:%4d MPH: %.1f", steps, speedFloat);
-  }
-  else {
+    }
+    else {
     lcd.setCursor(0,2);
            //. 12345678901234567890
     lcd.print("Save Sessions On App");
     lcd.setCursor(0,3);
     lcd.print(" OR Start Walking!  ");
-  }
-  
+    }
+  #endif
 }
 
 #define RED_LED 14
