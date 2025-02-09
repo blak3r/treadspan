@@ -33,7 +33,7 @@ LiquidCrystal_I2C lcd(0x27,20,4);
 
 
 #define RETRO_MODE 1     // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
-
+#define LOG_SERIAL 0
 
 // WiFi Credentials
 const char* ssid = "Angela";
@@ -99,6 +99,7 @@ bool subscribed = false;
 bool haveNotifiedFirstPacket = false;
 
 int currentSessionIndex = 0;
+int sessionsStored = 0;
 bool clearedSessions = false;
 int loopCounter=0; // used for timing in main loop
 
@@ -219,16 +220,17 @@ uint32_t getSessionCountFromEEPROM() {
     count |= (EEPROM.read(1) << 16);
     count |= (EEPROM.read(2) << 8);
     count |= EEPROM.read(3);
+    sessionsStored = count;
     return count;
 }
 
 void setSessionCountInEEPROM(uint32_t count) {
+    sessionsStored = count;
     EEPROM.write(0, (count >> 24) & 0xFF);
     EEPROM.write(1, (count >> 16) & 0xFF);
     EEPROM.write(2, (count >> 8) & 0xFF);
     EEPROM.write(3, count & 0xFF);
     EEPROM.commit();
-    updateLcd();
 }
 
 TreadmillSession readSessionFromEEPROM(int index) {
@@ -275,6 +277,7 @@ void writeSessionToEEPROM(int index, TreadmillSession session) {
 }
 
 void sessionStartedDetected() {
+    Serial.printf("%s >> NEW SESSION Started!\n", getFormattedTime());
     isTreadmillActive = true;
     currentSession.start = (uint32_t) time(nullptr);
 }
@@ -285,28 +288,20 @@ void sessionEndedDetected() {
     currentSession.steps = steps;
 
     // TODO check if the start time and end time are both valid
-    if( currentSession.steps < 50000 ) {
-
+    if( currentSession.steps > 50000 ) {
+      Serial.println("ERROR SAVING SESSION: impossible number of steps for a single session.");
+      return;
+    }
+    if( !currentSession.start ) {
+      // Ensures we have a start time set... could be a situation where betterspan was started before 
+      Serial.println("ERROR SAVING SESSION: no session start");
+      return;
     }
 
-    uint32_t count = getSessionCountFromEEPROM();
-    if (count >= MAX_SESSIONS) {
-        Serial.println("EEPROM is full. Cannot store more sessions.");
-        return;
-      }
 
-      // Start/end = current time, steps = random(1..50)
-      TreadmillSession newSession;
-      uint32_t nowSec = (uint32_t)time(nullptr);
-      newSession.start = nowSec;
-      newSession.stop  = nowSec;
-      newSession.steps = random(1, 51);
-
-      writeSessionToEEPROM(count, newSession);
-      setSessionCountInEEPROM(count + 1);
-      EEPROM.commit();
-
-      Serial.printf("Simulated new session stored at index=%u. Steps=%u\n", count, newSession.steps);
+    Serial.printf("%s << NEW SESSION Ended\n", getFormattedTime());
+    printSessionDetails(currentSession, sessionsStored);
+    recordSessionToEEPROM(currentSession);
 }
 
 void recordSessionToEEPROM( TreadmillSession session ) {
@@ -332,6 +327,9 @@ void IRAM_ATTR handleButtonInterrupt() {
   buttonPressed = true;
 }
 
+/**
+ * Used for development, adds a session on button press with relatively low number of steps to prevent it from impacting stats if actually imported.
+ */
 void simulateNewSession() {
   // Start/end = current time, steps = random(1..50)
   TreadmillSession newSession;
@@ -342,6 +340,25 @@ void simulateNewSession() {
   recordSessionToEEPROM(newSession);
 }
 
+void printSessionDetails(TreadmillSession s, int index) {
+  time_t startTime = (time_t)s.start;
+  time_t stopTime  = (time_t)s.stop;
+
+ // ctime_r() version expects a buffer you manage:
+  char startStr[26] = "Unknown";
+  char stopStr[26] = "Unknown";
+  ctime_r(&startTime, startStr);
+  ctime_r(&stopTime,  stopStr);
+
+  // Remove trailing newline for nicer printing
+  if (startStr[strlen(startStr)-1] == '\n') startStr[strlen(startStr)-1] = '\0';
+  if (stopStr[strlen(stopStr)-1]   == '\n') stopStr[strlen(stopStr)-1]   = '\0';
+
+  Serial.printf("Session #%d:\n", index);
+  Serial.printf("  Start: %s (Unix: %u)\n", startStr, s.start);
+  Serial.printf("  Stop : %s (Unix: %u)\n", stopStr,  s.stop);
+  Serial.printf("  Steps: %u\n", s.steps);
+}
 
 void printAllSessionsInEEPROM() {
   uint32_t count = getSessionCountFromEEPROM();
@@ -354,27 +371,11 @@ void printAllSessionsInEEPROM() {
 
   for(uint32_t i = 0; i < printCount; i++) {
     TreadmillSession s = readSessionFromEEPROM(i);
-
-    time_t startTime = (time_t)s.start;
-    time_t stopTime  = (time_t)s.stop;
-
-    char* startStr = ctime(&startTime);
-    char* stopStr  = ctime(&stopTime);
-
-    if (!startStr) startStr = (char*)"Unknown";
-    if (!stopStr)  stopStr  = (char*)"Unknown";
-
-    // Remove trailing newline for nicer printing
-    if (startStr[strlen(startStr)-1] == '\n') startStr[strlen(startStr)-1] = '\0';
-    if (stopStr[strlen(stopStr)-1]   == '\n') stopStr[strlen(stopStr)-1]   = '\0';
-
-    Serial.printf("Session #%d:\n", i);
-    Serial.printf("  Start: %s (Unix: %u)\n", startStr, s.start);
-    Serial.printf("  Stop : %s (Unix: %u)\n", stopStr,  s.stop);
-    Serial.printf("  Steps: %u\n", s.steps);
+    printSessionDetails(s, i);
+    
   }
   Serial.println("----------------------------------------------\n");
-}
+} 
 // ---------------------------------------------------------------------------
 // Descriptor Callback (Detect CCCD Writes)
 // ---------------------------------------------------------------------------
@@ -498,16 +499,50 @@ void indicateNextSession() {
   currentSessionIndex++;
 }
 
+String getCurrentSessionElapsed() {
+    // Get the current time
+    time_t now = time(nullptr);
+
+    // Safety check: If no valid start time, return "00:00:00"
+    if (currentSession.start == 0 || now < currentSession.start) {
+        return "00:00:00";
+    }
+
+    // Calculate elapsed seconds
+    uint32_t elapsed = now - currentSession.start;
+
+    // Compute hours, minutes, seconds
+    uint32_t hours   = elapsed / 3600;
+    uint32_t minutes = (elapsed % 3600) / 60;
+    uint32_t seconds = elapsed % 60;
+
+    // Format as HH:MM:SS
+    char buffer[9];
+    snprintf(buffer, sizeof(buffer), "%02u:%02u:%02u", hours, minutes, seconds);
+
+    return String(buffer).c_str();
+}
+
 void updateLcd() {
   //lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print("BetterSpan Fit");
+  lcd.print("BetterSpan Fit v0.9");
   lcd.setCursor(0,1);
-  lcd.print( getFormattedTime() );
-  lcd.setCursor(0,2);
-  lcd.printf("Stps:%5d Spd: %.1f", steps, speedFloat);
-  lcd.setCursor(0,3);
-  lcd.printf("Sessions: %3d", currentSessionIndex);
+  lcd.printf("Sessions To Sync: %2d", sessionsStored);
+  if( isTreadmillActive ) {
+    lcd.setCursor(0,2);
+    lcd.printf( "%s %s   ", getFormattedTime().c_str(), getCurrentSessionElapsed() );
+    lcd.setCursor(0,3);
+    lcd.printf("Steps:%4d MPH: %.1f", steps, speedFloat);
+  }
+  else {
+    lcd.setCursor(0,2);
+           //. 12345678901234567890
+    lcd.print("Save Sessions On App");
+    lcd.setCursor(0,3);
+    lcd.print(" OR Start Walking!  ");
+  }
+  
 }
 
 #define RED_LED 14
@@ -525,8 +560,6 @@ void toggleLedColor(uint8_t color) {
 void setup() {
     Serial.begin(115200);
     Serial.println("=== Treadmill Session Tracker (ESP32) ===");
-    // Print current sessions for debugging
-    printAllSessionsInEEPROM();
 
     Wire.begin();
     Wire.setClock(400000);
@@ -554,6 +587,8 @@ void setup() {
 
     // Initialize EEPROM
     EEPROM.begin(EEPROM_SIZE);
+    // Print current sessions for debugging
+    printAllSessionsInEEPROM();
 
     pinMode(BUTTON_PIN, INPUT_PULLUP);
     pinMode(CLEAR_PIN, INPUT_PULLUP);
@@ -681,10 +716,14 @@ void loop() {
 
 #ifdef RETRO_MODE
   void processRequest() {
-    Serial.print(getFormattedTime());
-    Serial.print(" REQ : ");
-    Serial.println(uart1Buffer);
-   // toggleLedColor(BLUE_LED);
+    if( LOG_SERIAL ) {
+      Serial.print(getFormattedTime());
+      Serial.print(" REQ : ");
+      Serial.println(uart1Buffer);
+    }
+    else {
+      toggleLedColor(BLUE_LED);
+    }
 
     if( uart1Buffer.startsWith(STEPS_STARTSWITH) ) {
       lastRequestType = LAST_REQUEST_IS_STEPS;
@@ -701,11 +740,14 @@ void loop() {
   }
 
   void processResponse() {
-    Serial.print(getFormattedTime());
-    Serial.print(" RESP: ");
-    Serial.println(uart2Buffer);
-    //toggleLedColor(GREEN_LED);
-
+    if( LOG_SERIAL ) {
+      Serial.print(getFormattedTime());
+      Serial.print(" RESP: ");
+      Serial.println(uart2Buffer);
+    } else {
+      toggleLedColor(GREEN_LED);
+    }
+    
     if( lastRequestType == LAST_REQUEST_IS_STEPS ) {
       steps = uart2Buf[3]*256 + uart2Buf[4];
       //Serial.print("STEPS: ");
@@ -741,6 +783,7 @@ void loop() {
             if( !isTreadmillActive ) {
                 sessionStartedDetected();
             }
+            isTreadmillActive = true;
         }
         return speedFloat;
     }
