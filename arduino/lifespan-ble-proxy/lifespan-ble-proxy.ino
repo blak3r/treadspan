@@ -16,6 +16,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <BLEDevice.h>
@@ -23,7 +24,9 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <EEPROM.h>
+#include <sys/time.h>  // For settimeofday()
 #include <time.h>  // For local time functions
+#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <HardwareSerial.h>
 LiquidCrystal_I2C lcd(0x27,20,4);
@@ -35,11 +38,6 @@ LiquidCrystal_I2C lcd(0x27,20,4);
 // WiFi Credentials
 const char* ssid = "Angela";
 const char* password = "iloveblake";
-
-// NTP Client Setup
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 0, 60000); // UTC, update every 60s
-
 
 // ARDUINO NANO PINOUT
 #define BUTTON_PIN 2 // D2
@@ -76,6 +74,7 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org", 0, 60000); // UTC, update every 60s
   #define LAST_REQUEST_IS_DISTANCE 3
   #define LAST_REQUEST_IS_TIME 4
   #define STEPS_STARTSWITH "1 3 0 15"
+  #define SPEED_STARTSWITH "1 6 0 10"
   //---------------------------------------
 #endif
 
@@ -103,6 +102,13 @@ int currentSessionIndex = 0;
 bool clearedSessions = false;
 int loopCounter=0; // used for timing in main loop
 
+int speedInt = 0;
+float speedFloat = 0;
+boolean isTreadmillActive = 0;
+
+TreadmillSession currentSession;
+
+
 
 // ---------------------------------------------------------------------------
 // Wifi / NTP
@@ -113,16 +119,84 @@ void connectToWiFi() {
     while (WiFi.status() != WL_CONNECTED) {
         delay(1000);
         Serial.print(".");
+        toggleLedColor(LED_RED);
     }
     Serial.println("\nConnected to WiFi!");
-    timeClient.begin(); // Start NTP client
 }
 
-// Fetch and print the current time
-uint32_t getNtpTime() {
-    timeClient.update();
-    return timeClient.getEpochTime(); // Returns UNIX timestamp
+// NTP Configuration
+const char* ntpServer = "pool.ntp.org";
+const int ntpPort = 123;
+WiFiUDP ntpUDP;
+
+#define NTP_PACKET_SIZE 48
+byte ntpPacketBuffer[NTP_PACKET_SIZE];
+
+// Timer variables
+unsigned long lastNtpRequest = 0;
+unsigned long ntpUpdateInterval = 3000;  // initially 3s, then 10 mins, had issues getting it to work first go raound. // 10 minutes
+
+void sendNtpRequest() {
+    Serial.println("Sending NTP request...");
+    
+    memset(ntpPacketBuffer, 0, NTP_PACKET_SIZE);
+    ntpPacketBuffer[0] = 0b11100011;  // LI, Version, Mode
+    ntpPacketBuffer[1] = 0;  // Stratum, or type of clock
+    ntpPacketBuffer[2] = 6;  // Polling Interval
+    ntpPacketBuffer[3] = 0xEC;  // Peer Clock Precision
+
+    // Send packet to NTP server
+    ntpUDP.beginPacket(ntpServer, ntpPort);
+    ntpUDP.write(ntpPacketBuffer, NTP_PACKET_SIZE);
+    ntpUDP.endPacket();
+
+    lastNtpRequest = millis();  // Record request time
 }
+
+void checkNtpResponse() {
+    int packetSize = ntpUDP.parsePacket();
+    if (packetSize >= NTP_PACKET_SIZE) {
+        Serial.println("NTP response received!");
+
+        ntpUDP.read(ntpPacketBuffer, NTP_PACKET_SIZE);
+        unsigned long highWord = word(ntpPacketBuffer[40], ntpPacketBuffer[41]);
+        unsigned long lowWord = word(ntpPacketBuffer[42], ntpPacketBuffer[43]);
+        time_t epochTime = (highWord << 16 | lowWord) - 2208988800UL;  // Convert to UNIX time
+
+        // Set system time
+        struct timeval tv;
+        tv.tv_sec = epochTime;
+        tv.tv_usec = 0;
+        settimeofday(&tv, NULL);
+
+        Serial.print("System time updated: ");
+        Serial.println(getFormattedTime());
+
+        ntpUpdateInterval = 60000; // 10 minutes
+    }
+}
+
+void checkNtpUpdate() {
+    if ((millis() - lastNtpRequest) >= ntpUpdateInterval) {
+        sendNtpRequest();
+    }
+    checkNtpResponse();
+}
+
+String getFormattedTime() {
+    time_t now = time(nullptr);
+    if (now < 100000) {
+        return "TBD, NTP sync";
+    }
+
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);  // Convert to local time
+
+    char buffer[30];
+    strftime(buffer, sizeof(buffer), "%H:%M:%S", &timeinfo);
+    return String(buffer);
+}
+
 
 
 // ---------------------------------------------------------------------------
@@ -200,6 +274,55 @@ void writeSessionToEEPROM(int index, TreadmillSession session) {
     EEPROM.commit();
 }
 
+void sessionStartedDetected() {
+    isTreadmillActive = true;
+    currentSession.start = (uint32_t) time(nullptr);
+}
+
+void sessionEndedDetected() {
+    isTreadmillActive = false;
+    currentSession.stop = (uint32_t) time(nullptr);
+    currentSession.steps = steps;
+
+    // TODO check if the start time and end time are both valid
+    if( currentSession.steps < 50000 ) {
+
+    }
+
+    uint32_t count = getSessionCountFromEEPROM();
+    if (count >= MAX_SESSIONS) {
+        Serial.println("EEPROM is full. Cannot store more sessions.");
+        return;
+      }
+
+      // Start/end = current time, steps = random(1..50)
+      TreadmillSession newSession;
+      uint32_t nowSec = (uint32_t)time(nullptr);
+      newSession.start = nowSec;
+      newSession.stop  = nowSec;
+      newSession.steps = random(1, 51);
+
+      writeSessionToEEPROM(count, newSession);
+      setSessionCountInEEPROM(count + 1);
+      EEPROM.commit();
+
+      Serial.printf("Simulated new session stored at index=%u. Steps=%u\n", count, newSession.steps);
+}
+
+void recordSessionToEEPROM( TreadmillSession session ) {
+  uint32_t count = getSessionCountFromEEPROM();
+  if (count >= MAX_SESSIONS) {
+    Serial.println("EEPROM is full. Cannot store more sessions.");
+    return;
+  }
+
+  writeSessionToEEPROM(count, session);
+  setSessionCountInEEPROM(count + 1);
+  EEPROM.commit();
+
+  Serial.printf("Session stored at index=%u. Steps=%u\n", count, session.steps);
+}
+
 // ---------------------------------------------------------------------------
 // Simulate a New Session (button-press handler)
 // ---------------------------------------------------------------------------
@@ -210,24 +333,13 @@ void IRAM_ATTR handleButtonInterrupt() {
 }
 
 void simulateNewSession() {
-  uint32_t count = getSessionCountFromEEPROM();
-  if (count >= MAX_SESSIONS) {
-    Serial.println("EEPROM is full. Cannot store more sessions.");
-    return;
-  }
-
   // Start/end = current time, steps = random(1..50)
   TreadmillSession newSession;
   uint32_t nowSec = (uint32_t)time(nullptr);
   newSession.start = nowSec;
   newSession.stop  = nowSec;
   newSession.steps = random(1, 51);
-
-  writeSessionToEEPROM(count, newSession);
-  setSessionCountInEEPROM(count + 1);
-  EEPROM.commit();
-
-  Serial.printf("Simulated new session stored at index=%u. Steps=%u\n", count, newSession.steps);
+  recordSessionToEEPROM(newSession);
 }
 
 
@@ -337,7 +449,6 @@ class MyServerCallbacks : public BLEServerCallbacks {
     deviceConnected = false;
     subscribed = false; // no longer subscribed after disconnect
     Serial.println(">> Client disconnected!");
-    updateLcd();
     delay(1000);
     pServer->startAdvertising();
     Serial.println(">> Advertising restarted...");
@@ -388,14 +499,15 @@ void indicateNextSession() {
 }
 
 void updateLcd() {
-  lcd.clear();
-  lcd.print("BetterSpan Fit2");
+  //lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("BetterSpan Fit");
   lcd.setCursor(0,1);
-  lcd.print(timeClient.getFormattedTime());
+  lcd.print( getFormattedTime() );
   lcd.setCursor(0,2);
-  lcd.print("Steps: ");
+  lcd.printf("Stps:%5d Spd: %.1f", steps, speedFloat);
   lcd.setCursor(0,3);
-  lcd.printf("Sessions: %d", currentSessionIndex);
+  lcd.printf("Sessions: %3d", currentSessionIndex);
 }
 
 #define RED_LED 14
@@ -416,6 +528,8 @@ void setup() {
     // Print current sessions for debugging
     printAllSessionsInEEPROM();
 
+    Wire.begin();
+    Wire.setClock(400000);
   	// initialize the LCD
     lcd.begin(20,4,LCD_5x8DOTS);
     lcd.init();
@@ -430,6 +544,12 @@ void setup() {
       Serial.println("RETRO Serial Enabled");
       uart1.begin(4800, SERIAL_8N1, RX1PIN, TX1PIN);
       uart2.begin(4800, SERIAL_8N1, RX2PIN, TX2PIN);
+
+      connectToWiFi();
+      delay(1000);
+      ntpUDP.begin(ntpPort);
+      delay(1000);
+      sendNtpRequest();  // Initial time request
     #endif
 
     // Initialize EEPROM
@@ -439,7 +559,7 @@ void setup() {
     pinMode(CLEAR_PIN, INPUT_PULLUP);
 
     // Connect to WiFi and sync time via NTP
-    connectToWiFi();
+
     
     // Setup button interrupt
     attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
@@ -479,16 +599,18 @@ void setup() {
   pAdvertising->setMaxPreferred(0x12);
   BLEDevice::startAdvertising();
   Serial.println("BLE Advertising started...");
-  updateLcd();
 }
 
 void loop() {
-    // Update NTP time every minute
-  if ((loopCounter++%3000 == 0) && WiFi.status() == WL_CONNECTED ) {
-      timeClient.update();
-      Serial.print("Current Time: ");
-      Serial.println(timeClient.getFormattedTime());
-      updateLcd();
+  static unsigned long lastLcdUpdate = 0;  // Stores last time LCD was updated
+  const unsigned long lcdUpdateInterval = 5000;  // 5 seconds
+
+  checkNtpUpdate();  // Non-blocking NTP handling
+
+  if (millis() - lastLcdUpdate >= lcdUpdateInterval) {
+      //Serial.println("LCDU");
+      updateLcd();  // Call your LCD update function
+      lastLcdUpdate = millis();  // Reset timer
   }
 
   // Check for button press
@@ -497,7 +619,7 @@ void loop() {
     simulateNewSession();
   }
 
-  // Clear sessions if GPIO12 goes HIGH during runtime
+  // Clear sessions from EEPROM if CLEAR_PIN goes low (only once per boot)
   if(!clearedSessions && digitalRead(CLEAR_PIN) == LOW) {
     Serial.println("GPIO12 is HIGH (runtime). Clearing all sessions...");
     setSessionCountInEEPROM(0);
@@ -553,19 +675,22 @@ void loop() {
   #endif
 
 
-  delay(20);
+  delay(1);
 }
 
 
 #ifdef RETRO_MODE
   void processRequest() {
-    //Serial.print(timeClient.getFormattedTime());
+    Serial.print(getFormattedTime());
     Serial.print(" REQ : ");
     Serial.println(uart1Buffer);
    // toggleLedColor(BLUE_LED);
 
     if( uart1Buffer.startsWith(STEPS_STARTSWITH) ) {
       lastRequestType = LAST_REQUEST_IS_STEPS;
+    }
+    else if( uart1Buffer.startsWith(SPEED_STARTSWITH) ) {
+        getSpeedFromCommand(uart1Buf);
     }
     else {
       lastRequestType = 0;
@@ -576,7 +701,7 @@ void loop() {
   }
 
   void processResponse() {
-    //Serial.print(timeClient.getFormattedTime());
+    Serial.print(getFormattedTime());
     Serial.print(" RESP: ");
     Serial.println(uart2Buffer);
     //toggleLedColor(GREEN_LED);
@@ -586,12 +711,41 @@ void loop() {
       //Serial.print("STEPS: ");
       //Serial.println(steps);
       lastRequestType = 0;
-      if( shouldIUpdateCounter++ % 2 ) {
-        updateLcd();
-      }
     }
     uart2Buffer = ""; // Clear the buffer
     uart2RxCnt = 0;
+  }
+
+
+  // Function to estimate speed in MPH based on integer value
+  // TODO figure out how to do kph... but technically i'm only using this to display to a debug lcd so probably wouldn't bother.
+  float estimate_mph(int value) {
+      return (0.00435 * value) - 0.009;
+  }
+
+  /**
+   * Pass in a command buffer.
+   */
+  float getSpeedFromCommand(uint8_t* buf) {
+    if( buf[3] == 10 ) {
+        speedInt = buf[4]*256+buf[5];
+        if( speedInt == 50 ) {
+            speedFloat = 0;
+            if( isTreadmillActive ) {
+               sessionEndedDetected();
+            }
+            isTreadmillActive = false;
+        }
+        else if( speedInt > 50 ) {
+            speedFloat = estimate_mph(speedInt);
+            if( !isTreadmillActive ) {
+                sessionStartedDetected();
+            }
+        }
+        return speedFloat;
+    }
+    return -1;
+
   }
 #endif
 
