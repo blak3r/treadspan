@@ -2,8 +2,8 @@
 
 This is a solution that makes 
 
-Lifespan makes great hardware (Treadmills) but their software seems like it was contracted out to the lowest bidder
-and didn't bother to QA it. It's terrible.
+Lifespan makes great hardware (Treadmills) but their software is the achilles heel.  It's so close to being an incredible
+platform for logging steps. 
 
 This solution solves the biggest limitation of the Lifespan OEM solution.  It enables multiple session logging.  Meaning, 
 you can start and stop your treadmill as much as you want and when you want to sync it to AppleHealth you open up the app and 
@@ -20,10 +20,11 @@ First, we program a chip called an Arduino.  This connects to the Omni Console u
 Energy (BLE) protocol.  This allows us to know the status of each workout session in realtime and importantly save EACH
 session to the arduino's internal memory.  
 
-Next, we  replacement application for the Lifespan Fit app gets installed on your iPhone.  This connects to the Arduino
+Next, we replacement application for the Lifespan Fit app gets installed on your iPhone.  This connects to the Arduino
 which is also running a BLE Server and has a custom BLE service that allows the iphone to download each session that was
 saved on the device.  
 
+![arduino-serial-monitoring-method.png](screenshots/arduino-serial-monitoring-method.png)
 
 ### Mobile App Features
 - It's a barebones application that fetches all logged sessions from the Arduino and adds them to HealthKit.  It does this in one step, no need to do the sync to apple health separately. 
@@ -40,10 +41,18 @@ vs. steps logged organically through a watch or iphone.
 The chip is powered by a USB Micro connector.  So, you can find an old charger you have laying around and put the chip somewhere out of the way.  It needs to be close to the Omni console but can basically just be in the same room.  
 You can wrap the chip in electric tape if you're worried about it touching other metal.
 
+TO TRY:
+- I believe the Arduino Nano ESP32 would work and would require less setup.
+- ESP32 OLED Lora 32 V3 has a display and two buttons and you can buy an enclosure for it!
+
 ### Mobile App
 You'll need to have a Mac, install XCode, do things like create a developer certificate, and put your iphone into developer mode.
 It's a fair amount of steps.  If I get enough interest i'll bite the bullet and go through the AppStore process so you don't have to do this.
 
+
+### Protocol Analysis
+If you're interested in learning more about the reverse engineering of protocol attempts. Then, look in the [Protocol Analysis](/protocol-analysis/README.md) folder.
+Here I include raw captures of the traffic over both the serial port and BLE as well as my notes from reversing the protocols.
 
 ## FAQS
 
@@ -64,4 +73,58 @@ The approach of using BLE makes the hardware very simple (you just need a progra
 ### Can I use this in an Office Environment, where there are lots of treadmills?
 You would need to modify both the arduino code and mobile app to limit the device it connects with.  This solution 
 was designed to make it as easy as possible to get working so it scans for devices matching names... having multiple
-treadmill consoles or multiple arduinos programed in range is gonna cause unpredicatable/unhandled results. 
+treadmill consoles or multiple arduinos programed in range is going to cause unpredicatable/unhandled results. 
+
+### Why does the device require WiFi?
+
+The device needs WiFi solely to maintain an accurate clock via NTP (Network Time Protocol), which is essential for correctly timestamping multiple stored sessions. Believe me, I didn't want to introduce this extra setup step, but it’s necessary to ensure reliable session tracking.
+
+I originally hoped to pull clock information from the Omni console (which does have a built-in clock), but unfortunately, that clock is only for display purposes. When the LifeSpan Fit app retrieves session data from the console, it only provides session durations, not actual start/end timestamps. To integrate with Apple HealthKit, the app estimates these times by setting the end time as the moment you press **"End and Sync"**, then subtracting the session duration to determine the start time.
+
+#### Are there alternatives to using WiFi?
+
+In theory, yes—but each alternative has significant drawbacks:
+
+##### 1. Track elapsed time since startup
+- The device could count seconds since power-on and store this in EEPROM. Upon syncing, the mobile app could then estimate session times.
+- **Issues**: If power is lost, all stored session timestamps are effectively useless. Additionally, microcontrollers experience clock drift (minutes per day), leading to inaccurate timestamps. This could result in treadmill sessions overlapping with other tracked activities (e.g., walks recorded by your smartwatch).
+
+##### 2. Sync time via the mobile app
+- The app could periodically set the device’s clock.
+- **Issues**: This would require users to open the app before logging sessions, adding unnecessary friction.
+
+##### 3. Use a real-time clock (RTC) module with a battery
+- This would keep time reliably, even if power is lost.
+- **Issues**: It would require additional hardware which means novices need to solder or breadboard to make connections! Additionally, it requires an initial time sync to seed the time (similar to WiFi).
+
+#### Why not implement one of these alternatives?
+
+The main reason is accuracy and complexity. These alternatives introduce potential errors or require significant programming effort to make them stable and reliable. I'd rather focus my time on improving other aspects of the project.
+
+That said, if someone finds a better approach and wants to contribute, I'd be happy to accept a pull request!
+
+
+
+## TODOs
+- TOP PRIORITY: Finish reverse engineering the BLE protocol and see if you can make it robust.
+- Reversed it and learned that we can't get time via BLE Protocol
+- 
+- Handle there being no available sessions in EEPROM on mobile app connect.
+- Maybe increase eeprom size to allow for more sessions?
+- What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
+- MOBILE app, metrics page
+  - Don't always request permission
+  - there is like an offset issue, you click on a bar and it displays the wrong bar.
+  - No label anymore.
+  - the 365 query is wrong now.
+- Could further optimize the serial code to prevent losing commands... but i'm not sure it going to make a difference.
+
+
+HARDWARE OPTIONS:
+- Nano ESP32     , $22 ,  8MB internal, 16mb external, NO BUTTONS, RGB LED though, USB-C, mostly comes unsoldered.
+- ESP32-WROOM-32:, $12 , 4MB Internal,  0           , 1 button  , 1 LED         , Micro-B.
+- M5 Stamp,        $7.5, 
+- M5 is like 39.90 and has 3 buttons.
+- HiLetGo makes an 18.99 one here: but only 4megs.https://www.amazon.com/HiLetgo-Display-Bluetooth-Internet-Development/dp/B07X1W16QS?utm_source=chatgpt.com
+- $20, 16megs, display, ESP32https://www.amazon.com/LILYGO-T-Display-Arduino-Development-CH9102F/dp/B099MPFJ9M/ref=sr_1_2?crid=IZ9PMD1ZGD2R&dib=eyJ2IjoiMSJ9.hMAQJODb9PtfmmMn9HwTh-KIPBNUzAHWRHaG1ja4pGSe1P1GUNxkh5cv6A5GJf7n-tGp6VRREIdH6dBkeBej2y2kOYkj_1E-RK7nyZvyo1OWaXgR_SSi0D4KFglk3W6eCZAR1tq_bD14DU5PJmfz_XqT58H9SnwYXMcla14Od0aZiGyZKON2z9bmkAzCVcsphxL5R2RMqlACUjtdBon0JrKJhDiv7Txs7hpUO0VBxFIUKycNkJsH4zn_zAw8EW5OQvVEcKw-IM2LSIZnDY7maZAadEb_FaIcsQA5HqT2tUnK0JYxWjAGE9UpIpqyto3KtqoJeVsTiF1lyZq_-FEsUYkZIPbEEiDOHO-hrimas88.Aw7TEb7iuAIKR3u5m-FhLiFgNmqYO55EKp0MaL6yEl0&dib_tag=se&keywords=TTGO%2BT-Display&qid=1739295850&s=electronics&sprefix=ttgo%2Bt-display%2Celectronics%2C113&sr=1-2&th=1
+- $17, 16megs, has enclosure + display.
