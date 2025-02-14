@@ -10,20 +10,13 @@ struct StepData: Identifiable {
     let lifespanFitSteps: Double
     let otherSteps: Double
     let label: String
-    
-    // Combined treadmill steps from both sources.
-    var treadmillSteps: Double {
-        return lifespanArduinoSteps + lifespanFitSteps
-    }
 }
 
 struct MetricsView: View {
     private let healthStore = HKHealthStore()
     private let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-    
     @State private var timeRange: TimeRange = .day
-    // Always keep currentDate as the start of day to avoid UTC vs. local time issues.
-    @State private var currentDate: Date = Calendar.current.startOfDay(for: Date())
+    @State private var currentDate = Date()
     @State private var stepData: [StepData] = []
     @State private var selectedBar: StepData?
     @State private var isLoading = true
@@ -49,18 +42,7 @@ struct MetricsView: View {
             }
         }
         .onAppear {
-            // Check if HealthKit is available and if we already have authorization.
-            if HKHealthStore.isHealthDataAvailable() {
-                let status = healthStore.authorizationStatus(for: stepType)
-                if status == .sharingAuthorized {
-                    hasPermission = true
-                    currentDate = Calendar.current.startOfDay(for: Date())
-                    fetchHealthData()
-                    fetchTotalLifespanSteps()
-                } else {
-                    requestHealthKitPermission()
-                }
-            }
+            requestHealthKitPermission()
         }
     }
     
@@ -87,7 +69,7 @@ struct MetricsView: View {
             
             chartView
             
-            Text("Total Treadmill Steps (last 365 days): \(totalLifespanSteps365)")
+            Text("Total Steps on Treadmill (last 365): \(totalLifespanSteps365)")
                 .font(.subheadline)
                 .padding(.top, 8)
         }
@@ -96,11 +78,12 @@ struct MetricsView: View {
     
     private func selectedDataView(_ data: StepData) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            // When in day view, show just the hour (e.g. “3 PM”)
             Text(formatDate(data.date))
                 .font(.headline)
+            
             Text("Total Steps: \(Int(data.total))")
-            Text("Treadmill Steps: \(Int(data.treadmillSteps))")
+            Text("LifespanArduino Steps: \(Int(data.lifespanFitSteps + data.lifespanArduinoSteps))")
+            Text("Lifespan Fit Steps: \(Int(data.lifespanFitSteps))")
             Text("Other Steps: \(Int(data.otherSteps))")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -152,89 +135,65 @@ struct MetricsView: View {
     private var chartView: some View {
         Chart {
             ForEach(stepData) { data in
-                // Use the actual date for the x value so we can customize the axis.
                 BarMark(
-                    x: .value("Time", data.date),
-                    y: .value("Steps", data.treadmillSteps)
+                    x: .value("Time", data.label),
+                    y: .value("Steps", data.lifespanArduinoSteps)
                 )
-                .foregroundStyle(by: .value("Step Type", "Treadmill Steps"))
+                .foregroundStyle(Color.blue)
                 
                 BarMark(
-                    x: .value("Time", data.date),
+                    x: .value("Time", data.label),
+                    y: .value("Steps", data.lifespanFitSteps)
+                )
+                .foregroundStyle(Color.green)
+                
+                BarMark(
+                    x: .value("Time", data.label),
                     y: .value("Steps", data.otherSteps)
                 )
-                .foregroundStyle(by: .value("Step Type", "Other Steps"))
+                .foregroundStyle(Color.gray.opacity(0.5))
             }
         }
-        // Map the two types to colors.
-        .chartForegroundStyleScale([
-            "Treadmill Steps": Color.blue,
-            "Other Steps": Color.gray.opacity(0.5)
-        ])
         .frame(height: 200)
-        // For day view, show only four x‑axis labels (every 6 hours).
-        .chartXAxis {
-            if timeRange == .day {
-                AxisMarks(values: .stride(by: .hour, count: 6)) { value in
-                    AxisGridLine()
-                    AxisValueLabel() {
-                        Text(
-                            value.as(Date.self)
-                                .map({
-                                    let formatter = DateFormatter()
-                                    formatter.dateFormat = "ha"
-                                    return formatter.string(from: $0)
-                                }) ?? ""
-                        )
-                    }
-                }
-            } else {
-                AxisMarks()
-            }
-        }
-        // Use a single overlay gesture for both tap and swipe.
         .chartOverlay { proxy in
             GeometryReader { geometry in
-                Rectangle()
-                    .fill(Color.clear)
-                    .contentShape(Rectangle())
+                Rectangle().fill(.clear).contentShape(Rectangle())
                     .gesture(
-                        DragGesture(minimumDistance: 0)
+                        DragGesture()
                             .onEnded { value in
-                                let swipeThreshold: CGFloat = 50
-                                if abs(value.translation.width) > swipeThreshold {
-                                    // Handle swipe.
-                                    if value.translation.width > 0 {
-                                        navigateDate(forward: false)
-                                    } else {
-                                        navigateDate(forward: true)
-                                    }
-                                } else {
-                                    // Handle tap.
-                                    let location = value.location
-                                    let relativeX = location.x - geometry.frame(in: .local).origin.x
-                                    if let index = getDataIndex(for: relativeX, width: geometry.size.width) {
-                                        selectedBar = stepData[index]
-                                    }
+                                let threshold: CGFloat = 50
+                                if value.translation.width > threshold {
+                                    navigateDate(forward: false)
+                                } else if value.translation.width < -threshold {
+                                    navigateDate(forward: true)
                                 }
                             }
                     )
             }
         }
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onTapGesture { location in
+                        let relativeX = location.x - geometry.frame(in: .local).origin.x
+                        if let index = getDataIndex(for: relativeX, width: geometry.size.width) {
+                            selectedBar = stepData[index]
+                        }
+                    }
+            }
+        }
     }
     
     private func requestHealthKitPermission() {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
         let typesToRead: Set = [stepType]
         
         healthStore.requestAuthorization(toShare: nil, read: typesToRead) { success, error in
             DispatchQueue.main.async {
+                hasPermission = success
                 if success {
-                    hasPermission = true
-                    currentDate = Calendar.current.startOfDay(for: Date())
                     fetchHealthData()
                     fetchTotalLifespanSteps()
-                } else {
-                    hasPermission = false
                 }
             }
         }
@@ -244,11 +203,13 @@ struct MetricsView: View {
         isLoading = true
         let (startDate, endDate, intervalComponents) = getDateRange()
         
-        // First, fetch the total steps.
+        // First fetch total steps
         fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents) { totalSteps in
-            // Then fetch Treadmill steps from LifespanArduino.
+            // Fetch LifespanArduino steps
+            // Source name: LifespanArduino, bundleIdentifier: Robotion.LifespanArduino
             fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifespanArduino") { arduinoSteps in
-                // Then fetch Treadmill steps from Lifespan Fit (source name "Lifespan").
+                // Then fetch Lifespan Fit steps
+                // Source name: Lifespan, bundleIdentifier: com.app.lifespanfit
                 fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "Lifespan") { fitSteps in
                     DispatchQueue.main.async {
                         self.stepData = totalSteps.map { date, totalCount in
@@ -262,8 +223,7 @@ struct MetricsView: View {
                                 otherSteps: totalCount - (arduinoCount + fitCount),
                                 label: formatLabel(date)
                             )
-                        }
-                        .sorted { $0.date < $1.date }
+                        }.sorted { $0.date < $1.date }
                         self.isLoading = false
                     }
                 }
@@ -277,8 +237,8 @@ struct MetricsView: View {
         let startDate = calendar.date(byAdding: .day, value: -365, to: endDate)!
         
         let group = DispatchGroup()
-        var arduinoTotal = 0.0
-        var fitTotal = 0.0
+        var arduinoTotal = 0
+        var fitTotal = 0
         
         group.enter()
         fetchStepsByInterval(
@@ -287,7 +247,7 @@ struct MetricsView: View {
             components: DateComponents(day: 1),
             sourceName: "LifespanArduino"
         ) { steps in
-            arduinoTotal = steps.values.reduce(0, +)
+            arduinoTotal = Int(steps.values.reduce(0, +))
             group.leave()
         }
         
@@ -298,12 +258,12 @@ struct MetricsView: View {
             components: DateComponents(day: 1),
             sourceName: "Lifespan"
         ) { steps in
-            fitTotal = steps.values.reduce(0, +)
+            fitTotal = Int(steps.values.reduce(0, +))
             group.leave()
         }
         
         group.notify(queue: .main) {
-            self.totalLifespanSteps365 = Int(arduinoTotal + fitTotal)
+            self.totalLifespanSteps365 = arduinoTotal + fitTotal
         }
     }
     
@@ -323,7 +283,7 @@ struct MetricsView: View {
                     return
                 }
                 
-                // Debug: List all sources.
+                // Debug: Print all sources
                 print("Available sources:")
                 sources.forEach { source in
                     print("Source name: \(source.name), bundleIdentifier: \(source.bundleIdentifier)")
@@ -400,18 +360,22 @@ struct MetricsView: View {
             let start = calendar.startOfDay(for: now)
             let end = calendar.date(byAdding: .day, value: 1, to: start)!
             return (start, end, DateComponents(hour: 1))
+            
         case .week:
             let start = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now))!
             let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
             return (start, end, DateComponents(day: 1))
+            
         case .month:
             let start = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
             let end = calendar.date(byAdding: .month, value: 1, to: start)!
             return (start, end, DateComponents(day: 1))
+            
         case .sixMonth:
             let start = calendar.date(byAdding: .month, value: -5, to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
             let end = calendar.date(byAdding: .month, value: 1, to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
             return (start, end, DateComponents(month: 1))
+            
         case .year:
             let start = calendar.date(byAdding: .month, value: -11, to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
             let end = calendar.date(byAdding: .month, value: 1, to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
@@ -419,48 +383,35 @@ struct MetricsView: View {
         }
     }
     
-    // Update currentDate by always using the start of day/month as appropriate.
     private func navigateDate(forward: Bool) {
         let calendar = Calendar.current
         
         switch timeRange {
         case .day:
-            let base = calendar.startOfDay(for: currentDate)
-            currentDate = calendar.date(byAdding: .day, value: forward ? 1 : -1, to: base)!
+            currentDate = calendar.date(byAdding: .day, value: forward ? 1 : -1, to: currentDate)!
         case .week:
-            let base = calendar.startOfDay(for: currentDate)
-            currentDate = calendar.date(byAdding: .day, value: forward ? 7 : -7, to: base)!
+            currentDate = calendar.date(byAdding: .day, value: forward ? 7 : -7, to: currentDate)!
         case .month:
-            if let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: currentDate)) {
-                currentDate = calendar.date(byAdding: .month, value: forward ? 1 : -1, to: startOfMonth)!
-            }
+            currentDate = calendar.date(byAdding: .month, value: forward ? 1 : -1, to: currentDate)!
         case .sixMonth:
-            if let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: currentDate)) {
-                currentDate = calendar.date(byAdding: .month, value: forward ? 6 : -6, to: startOfMonth)!
-            }
+            currentDate = calendar.date(byAdding: .month, value: forward ? 6 : -6, to: currentDate)!
         case .year:
-            if let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: currentDate)) {
-                currentDate = calendar.date(byAdding: .year, value: forward ? 1 : -1, to: startOfMonth)!
-            }
+            currentDate = calendar.date(byAdding: .year, value: forward ? 1 : -1, to: currentDate)!
         }
         
         fetchHealthData()
         fetchTotalLifespanSteps()
     }
     
-    // For tooltips: in day view, show the hour; otherwise show the full date.
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        if timeRange == .day {
-            formatter.dateFormat = "h a"
-        } else {
-            formatter.dateStyle = .medium
-        }
+        formatter.dateStyle = .medium
         return formatter.string(from: date)
     }
     
     private func formatLabel(_ date: Date) -> String {
         let formatter = DateFormatter()
+        
         switch timeRange {
         case .day:
             formatter.dateFormat = "HH:00"
@@ -471,11 +422,13 @@ struct MetricsView: View {
         case .sixMonth, .year:
             formatter.dateFormat = "MMM"
         }
+        
         return formatter.string(from: date)
     }
     
     private func getDateRangeText() -> String {
         let formatter = DateFormatter()
+        
         switch timeRange {
         case .day:
             formatter.dateFormat = "MMMM d, yyyy"
@@ -498,7 +451,6 @@ struct MetricsView: View {
         }
     }
     
-    // Compute which data index was tapped based on the x position.
     private func getDataIndex(for xPosition: CGFloat, width: CGFloat) -> Int? {
         let stepWidth = width / CGFloat(stepData.count)
         let index = Int(xPosition / stepWidth)
