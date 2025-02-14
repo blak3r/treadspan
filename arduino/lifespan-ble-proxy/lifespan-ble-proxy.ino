@@ -31,6 +31,7 @@ LiquidCrystal_I2C lcd(0x27,20,4);
 
 #define LCD_ENABLED 1
 #define RETRO_MODE 1     // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
+#define BLE_CENTRAL_MODE 1 // UNCOMMENT IF YOU WANT TO GET INFO VIA BLE PROTOCOL.
 #define LOG_SERIAL 0
 
 // WiFi Credentials
@@ -104,10 +105,26 @@ int loopCounter=0; // used for timing in main loop
 int speedInt = 0;
 float speedFloat = 0;
 boolean isTreadmillActive = 0;
+// NEW: Global variables for tracking today's steps
+String lastRecordedDate = "";
+unsigned long totalStepsToday = 0;
 
 TreadmillSession currentSession;
 
-
+// ---------------------------------------------------------------------------
+// LEDs / Indicators
+// ---------------------------------------------------------------------------
+#define RED_LED 14
+#define BLUE_LED 15
+#define GREEN_LED 16
+void toggleLedColor(uint8_t color) {
+    pinMode(color, OUTPUT);  // Ensure the pin is set as an output
+    digitalWrite(color, !digitalRead(color));  // Toggle the LED state
+}
+void setLed( uint8_t color, bool status ) {
+  pinMode(color, OUTPUT);
+  digitalWrite(color, status);
+}
 
 // ---------------------------------------------------------------------------
 // Wifi / NTP
@@ -122,7 +139,7 @@ void connectToWiFi() {
     while (WiFi.status() != WL_CONNECTED) {
         delay(1000);
         Serial.print(".");
-        toggleLedColor(LED_RED);
+        toggleLedColor(RED_LED);
     }
     Serial.println("\nConnected to WiFi!");
     #if LCD_ENABLED
@@ -322,6 +339,41 @@ void recordSessionToEEPROM( TreadmillSession session ) {
   EEPROM.commit();
 
   Serial.printf("Session stored at index=%u. Steps=%u\n", count, session.steps);
+
+  // NEW: Update today's steps total.
+  String today = getFormattedDate();
+  if (lastRecordedDate != today) {
+      lastRecordedDate = today;
+      totalStepsToday = 0;
+  }
+  totalStepsToday += session.steps;
+}
+
+// ---------------------------------------------------------------------------
+// Today's steps feature.
+// ---------------------------------------------------------------------------
+// NEW: Return the current date in "YYYY-MM-DD" format
+String getFormattedDate() {
+  time_t now = time(nullptr);
+  // If time has not yet been set by NTP, return a placeholder.
+  if (now < 100000) {
+    return "NTP sync";
+  }
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+  char buffer[11];  // Buffer for "YYYY-MM-DD" plus null terminator
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d", &timeinfo);
+  return String(buffer);
+}
+
+// NEW: Get total steps for today (previous sessions + current unsaved steps)
+unsigned long getTodaysSteps() {
+  String today = getFormattedDate();
+  if (lastRecordedDate != today) {
+    lastRecordedDate = today;
+    totalStepsToday = 0;
+  }
+  return totalStepsToday + steps;  // 'steps' is the unsaved current session step count.
 }
 
 // ---------------------------------------------------------------------------
@@ -539,12 +591,19 @@ String getCurrentSessionElapsed() {
 }
 
 void updateLcd() {
+  static uint pageStyle = 0;
+
   #if LCD_ENABLED
     //lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("BetterSpan Fit v0.9");
     lcd.setCursor(0,1);
-    lcd.printf("Sessions To Sync: %2d", sessionsStored);
+    if( pageStyle < 2 ) {
+      lcd.printf("Steps Today: %7d", getTodaysSteps());
+    } else {
+      lcd.printf("Sessions To Sync: %2d", sessionsStored);
+    }
+    pageStyle = (pageStyle+1) %4; 
     if( isTreadmillActive ) {
     lcd.setCursor(0,2);
     lcd.printf( "%s %s   ", getFormattedTime().c_str(), getCurrentSessionElapsed() );
@@ -559,14 +618,6 @@ void updateLcd() {
     lcd.print(" OR Start Walking!  ");
     }
   #endif
-}
-
-#define RED_LED 14
-#define BLUE_LED 15
-#define GREEN_LED 16
-void toggleLedColor(uint8_t color) {
-    pinMode(color, OUTPUT);  // Ensure the pin is set as an output
-    digitalWrite(color, !digitalRead(color));  // Toggle the LED state
 }
 
 
@@ -654,7 +705,7 @@ void setup() {
 
 void loop() {
   static unsigned long lastLcdUpdate = 0;  // Stores last time LCD was updated
-  const unsigned long lcdUpdateInterval = 5000;  // 5 seconds
+  const unsigned long lcdUpdateInterval = 1000;  // 5 seconds
 
   checkNtpUpdate();  // Non-blocking NTP handling
 
@@ -729,8 +780,10 @@ void loop() {
   delay(1);
 }
 
-
 #ifdef RETRO_MODE
+
+  float getSpeedFromCommand(uint8_t*);
+
   void processRequest() {
     if( LOG_SERIAL ) {
       Serial.print(getFormattedTime());
@@ -763,7 +816,7 @@ void loop() {
     } else {
       toggleLedColor(GREEN_LED);
     }
-    
+
     if( lastRequestType == LAST_REQUEST_IS_STEPS ) {
       steps = uart2Buf[3]*256 + uart2Buf[4];
       //Serial.print("STEPS: ");
@@ -807,5 +860,7 @@ void loop() {
 
   }
 #endif
+
+
 
 
