@@ -78,13 +78,18 @@ struct MetricsView: View {
     
     private func selectedDataView(_ data: StepData) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(formatDate(data.date))
-                .font(.headline)
+            // CHANGED: For day view, display hour instead of full date
+            if timeRange == .day {
+                Text(formatHour(data.date))
+                    .font(.headline)
+            } else {
+                Text(formatDate(data.date))
+                    .font(.headline)
+            }
             
             Text("Total Steps: \(Int(data.total))")
-            Text("LifespanArduino Steps: \(Int(data.lifespanFitSteps + data.lifespanArduinoSteps))")
-            Text("Lifespan Fit Steps: \(Int(data.lifespanFitSteps))")
-            Text("Other Steps: \(Int(data.otherSteps))")
+            Text("  - Treadmill Steps: \(Int(data.lifespanFitSteps + data.lifespanArduinoSteps))")
+            Text("  - Other Steps: \(Int(data.otherSteps))")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -156,6 +161,7 @@ struct MetricsView: View {
         }
         .frame(height: 200)
         .chartOverlay { proxy in
+            // Swipe left/right
             GeometryReader { geometry in
                 Rectangle().fill(.clear).contentShape(Rectangle())
                     .gesture(
@@ -172,6 +178,7 @@ struct MetricsView: View {
             }
         }
         .chartOverlay { proxy in
+            // Tap to select
             GeometryReader { geometry in
                 Rectangle().fill(.clear).contentShape(Rectangle())
                     .onTapGesture { location in
@@ -206,11 +213,9 @@ struct MetricsView: View {
         // First fetch total steps
         fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents) { totalSteps in
             // Fetch LifespanArduino steps
-            // Source name: LifespanArduino, bundleIdentifier: Robotion.LifespanArduino
             fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifespanArduino") { arduinoSteps in
                 // Then fetch Lifespan Fit steps
-                // Source name: Lifespan, bundleIdentifier: com.app.lifespanfit
-                fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "Lifespan") { fitSteps in
+                fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifeSpan") { fitSteps in
                     DispatchQueue.main.async {
                         self.stepData = totalSteps.map { date, totalCount in
                             let arduinoCount = arduinoSteps[date] ?? 0
@@ -256,7 +261,7 @@ struct MetricsView: View {
             start: startDate,
             end: endDate,
             components: DateComponents(day: 1),
-            sourceName: "Lifespan"
+            sourceName: "LifeSpan"
         ) { steps in
             fitTotal = Int(steps.values.reduce(0, +))
             group.leave()
@@ -283,11 +288,10 @@ struct MetricsView: View {
                     return
                 }
                 
-                // Debug: Print all sources
-                print("Available sources:")
-                sources.forEach { source in
-                    print("Source name: \(source.name), bundleIdentifier: \(source.bundleIdentifier)")
-                }
+                // Debug: Print all sources (optional)
+                // sources.forEach { source in
+                //     print("Source name: \(source.name), bundleIdentifier: \(source.bundleIdentifier)")
+                // }
                 
                 if let targetSource = sources.first(where: { $0.name == sourceName }) {
                     let sourcePredicate = HKQuery.predicateForObjects(from: [targetSource])
@@ -403,18 +407,29 @@ struct MetricsView: View {
         fetchTotalLifespanSteps()
     }
     
+    // Original date formatter (used for non-day views)
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         return formatter.string(from: date)
     }
     
+    // NEW: Hour-only formatter for tooltips in day view
+    private func formatHour(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        // 12-hour format with AM/PM. Use "HH" for 24-hour format if you prefer.
+        formatter.dateFormat = "h a"
+        return formatter.string(from: date)
+    }
+    
+    // CHANGED: X-Axis label logic to display only the hour when in .day
     private func formatLabel(_ date: Date) -> String {
         let formatter = DateFormatter()
         
         switch timeRange {
         case .day:
-            formatter.dateFormat = "HH:00"
+            // Only display the hour (e.g., "1 PM", "2 PM", etc.)
+            formatter.dateFormat = "h"
         case .week:
             formatter.dateFormat = "EEE"
         case .month:
@@ -451,10 +466,19 @@ struct MetricsView: View {
         }
     }
     
+    // FIX: Clamping the index so the rightmost area still picks the last bar
     private func getDataIndex(for xPosition: CGFloat, width: CGFloat) -> Int? {
+        guard !stepData.isEmpty else { return nil }
+
         let stepWidth = width / CGFloat(stepData.count)
-        let index = Int(xPosition / stepWidth)
-        guard index >= 0 && index < stepData.count else { return nil }
+
+        // Offset by half a bar width to align correctly
+        let adjustedX = xPosition + (stepWidth / 2)
+        var index = Int(adjustedX / stepWidth)
+
+        // Clamp the index so it doesn’t go out of range
+        index = max(0, min(index, stepData.count - 1))
+
         return index
     }
 }
