@@ -30,9 +30,13 @@
 LiquidCrystal_I2C lcd(0x27,20,4);
 
 #define LCD_ENABLED 1
-//#define RETRO_MODE 0     // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
-#define OMNI_CONSOLE_MODE 1 
+//#define RETRO_MODE 0        // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
+#define OMNI_CONSOLE_MODE 1   // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
 #define LOG_SERIAL 0
+
+#if !defined(RETRO_MODE) && !defined(OMNI_CONSOLE_MODE)
+  #error "At least one must be defined: RETRO_MODE or OMNI_CONSOLE_MODE"
+#endif 
 
 // WiFi Credentials
 const char* ssid = "Angela";
@@ -92,7 +96,7 @@ static const char* BLE_CONFIRM_CHAR_UUID  = "12345678-1234-5678-1234-56789abcdef
 BLEServer* pServer = nullptr;
 BLECharacteristic* dataCharacteristic = nullptr;
 BLECharacteristic* confirmCharacteristic = nullptr;
-bool deviceConnected = false;
+bool isMobileAppConnected = false;
 bool oldDeviceConnected = false;
 bool subscribed = false;
 bool haveNotifiedFirstPacket = false;
@@ -104,6 +108,9 @@ int loopCounter=0; // used for timing in main loop
 
 // COMMON STATE VARIABLES (RETRO / OMNI)
 int steps = 0;
+int calories = 0; // only omni console mode.
+int distance = 0; // only omni console mode
+int avgSpeedInt = 0; // only omni console mode.
 int speedInt = 0;
 float speedFloat = 0;
 boolean isTreadmillActive = 0;
@@ -131,7 +138,7 @@ TreadmillSession currentSession;
   const unsigned long consoleCommandUpdateInterval = 500; 
   volatile int lastConsoleCommandIndex = 0;
 
-  #define MAX_STRINGS 5  // Adjust based on how many hex strings you want to store
+  //#define MAX_STRINGS 5  // Adjust based on how many hex strings you want to store
   #define MAX_LENGTH 20  // Adjust based on the longest expected hex string
   const char *hexStrings[] = {
     "A188000000",
@@ -139,17 +146,19 @@ TreadmillSession currentSession;
     "A191000000",
     "A185000000",
     "A187000000",
+    "A182000000",
     // "A181000000",
     // "A186000000",
-    // "A182000000",
+
 
   };
-  const int consoleCommandCount = MAX_STRINGS;
+  const int consoleCommandCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
   #define CONSOLE_STEPS_INDEX          0
   #define CONSOLE_SESSION_TIME_INDEX   1
   #define CONSOLE_SESSION_STATUS_INDEX 2
   #define CONSOLE_DISTANCE_INDEX 3
   #define CONSOLE_CALORIES_INDEX 4
+  #define CONSOLE_SPEED_INDEX 5
 
 
   // Function to convert hex string to byte array
@@ -245,6 +254,18 @@ TreadmillSession currentSession;
     if( lastConsoleCommandIndex == CONSOLE_STEPS_INDEX) {
       steps = data[2]*256+data[3];
       Serial.printf("Steps: %d\n", steps);
+    }
+    else if( lastConsoleCommandIndex == CONSOLE_CALORIES_INDEX ) {
+      calories = data[2]*256+data[3];
+      Serial.printf("Calories: %d\n", calories);
+    }
+    else if( lastConsoleCommandIndex == CONSOLE_DISTANCE_INDEX ) {
+      distance = data[2]*256+data[3];
+      Serial.printf("Distance: %d\n", distance);
+    }
+    else if( lastConsoleCommandIndex == CONSOLE_SPEED_INDEX ) {
+      avgSpeedInt = data[2]*256+data[3];
+      Serial.printf("AvgSpeedInt: %d\n", avgSpeedInt);
     }
     else if( lastConsoleCommandIndex == CONSOLE_SESSION_STATUS_INDEX) {
       uint8_t status = data[2];
@@ -700,14 +721,14 @@ class ConfirmCallback : public BLECharacteristicCallbacks {
  */
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) override {
-    deviceConnected = true;
+    isMobileAppConnected = true;
     haveNotifiedFirstPacket = false;
     Serial.println(">> Client connected!");
     updateLcd();
   }
 
   void onDisconnect(BLEServer* pServer) override {
-    deviceConnected = false;
+    isMobileAppConnected = false;
     subscribed = false; // no longer subscribed after disconnect
     haveNotifiedFirstPacket = false;
     Serial.println(">> Client disconnected!");
@@ -944,20 +965,20 @@ void loop() {
     clearedSessions = true;
   }
 
-  // If we just connected (deviceConnected just turned true) or we've not yet sent the first packet
-  if (deviceConnected && !oldDeviceConnected) {
-    oldDeviceConnected = deviceConnected;
+  // If we just connected (isMobileAppConnected just turned true) or we've not yet sent the first packet
+  if (isMobileAppConnected && !oldDeviceConnected) {
+    oldDeviceConnected = isMobileAppConnected;
     Serial.println("Device is connected. Waiting for subscription to CCCD...");
     // We'll wait for "subscribed" == true, then do the initial send
   }
-  else if (!deviceConnected && oldDeviceConnected) {
+  else if (!isMobileAppConnected && oldDeviceConnected) {
     // Disconnected
-    oldDeviceConnected = deviceConnected;
+    oldDeviceConnected = isMobileAppConnected;
     Serial.println("Device disconnected, set subscribed=false");
   }
 
   // If the central is connected & subscribed but we haven't sent the first packet
-  if (deviceConnected && subscribed && !haveNotifiedFirstPacket) {
+  if (isMobileAppConnected && subscribed && !haveNotifiedFirstPacket) {
     haveNotifiedFirstPacket = true;
     currentSessionIndex = 0;
     Serial.println("Central subscribed. Sending first session...");
