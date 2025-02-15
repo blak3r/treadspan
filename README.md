@@ -16,6 +16,8 @@ counted.  A watch solution doesn't work since your arms are stationary.
 
 OMNI Console ----(BLE) ---> Arduino ----(BLE)----> Mobile App
 
+In order to accomplish this, we need a two part solution: a new piece of hardware and a new mobile app.
+
 First, we program a chip called an Arduino.  This connects to the Omni Console using a Bluetooth Low
 Energy (BLE) protocol.  This allows us to know the status of each workout session in realtime and importantly save EACH
 session to the arduino's internal memory.  
@@ -117,17 +119,25 @@ That said, if someone finds a better approach and wants to contribute, I'd be ha
 
 
 ## TODOs
-- TOP PRIORITY: Finish reverse engineering the BLE protocol and see if you can make it robust.
-- Reversed it and learned that we can't get time via BLE Protocol
-- Need to do a full lcd_clear every once in a while.
-- Handle there being no available sessions in EEPROM on mobile app connect.
-- Maybe increase eeprom size to allow for more sessions?
-- What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
+HIGH
+- Write the BLE method arduino code to detect sessions. 
+- Create a means to configure the WiFi (with a bluetooth)
+
+MED
+- Finalize App Name
+- Change the bundle id?
 - MOBILE app, metrics page
   - Don't allow user to go into future.
   - Sometimes the week view doesn't include the current day.
+- Create the FAQ Page Swift View
 
+LOW
+- What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
+- Need to do a full lcd_clear every once in a while.
+- Maybe increase eeprom size to allow for more sessions?
+- Change the Service UUIDs to be something less generic that could conflict.
 - Could further optimize the serial code to prevent losing commands... but i'm not sure it going to make a difference.
+
 
 
 HARDWARE OPTIONS:

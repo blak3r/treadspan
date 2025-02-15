@@ -36,7 +36,7 @@ LiquidCrystal_I2C lcd(0x27,20,4);
 
 // WiFi Credentials
 const char* ssid = "Angela";
-const char* password = "iloveblake";
+const char* password = "iloveblake"; // BTW, this is a guest network i created so i didn't have to put my real password on github ;P
 
 // ARDUINO NANO PINOUT
 #define BUTTON_PIN 2 // D2
@@ -654,6 +654,7 @@ void setup() {
 
     // Initialize EEPROM
     EEPROM.begin(EEPROM_SIZE);
+
     // Print current sessions for debugging
     printAllSessionsInEEPROM();
 
