@@ -130,6 +130,7 @@ MED
   - Don't allow user to go into future.
   - Sometimes the week view doesn't include the current day.
 - Create the FAQ Page Swift View
+- WIFI Reconnect code.
 
 LOW
 - What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.

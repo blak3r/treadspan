@@ -88,7 +88,7 @@ static const char* BLE_SERVICE_UUID       = "12345678-1234-5678-1234-56789abcdef
 static const char* BLE_DATA_CHAR_UUID     = "12345678-1234-5678-1234-56789abcdef1";
 static const char* BLE_CONFIRM_CHAR_UUID  = "12345678-1234-5678-1234-56789abcdef2";
 
-// BLE Variables
+// BLE Peripheral Variables
 BLEServer* pServer = nullptr;
 BLECharacteristic* dataCharacteristic = nullptr;
 BLECharacteristic* confirmCharacteristic = nullptr;
@@ -566,6 +566,9 @@ void indicateNextSession() {
   currentSessionIndex++;
 }
 
+
+
+#if LCD_ENABLED
 String getCurrentSessionElapsed() {
     // Get the current time
     time_t now = time(nullptr);
@@ -589,6 +592,7 @@ String getCurrentSessionElapsed() {
 
     return String(buffer).c_str();
 }
+#endif
 
 void updateLcd() {
   static uint pageStyle = 0;
@@ -621,63 +625,65 @@ void updateLcd() {
 }
 
 
+
+
+
 // ---------------------------------------------------------------------------
 // Setup / Loop
 // ---------------------------------------------------------------------------
 void setup() {
-    Serial.begin(115200);
-    Serial.println("=== Treadmill Session Tracker (ESP32) ===");
+  Serial.begin(115200);
+  Serial.println("=== Treadmill Session Tracker (ESP32) ===");
 
-    Wire.begin();
-    Wire.setClock(400000);
-  	// initialize the LCD
-    lcd.begin(20,4,LCD_5x8DOTS);
-    lcd.init();
-    lcd.clear();
-    lcd.backlight();
+  Wire.begin();
+  Wire.setClock(400000);
+  // initialize the LCD
+  lcd.begin(20,4,LCD_5x8DOTS);
+  lcd.init();
+  lcd.clear();
+  lcd.backlight();
 
-    #ifdef ARDUINO_ARDUINO_NANO_ESP32
-      Serial.println("NANO_ESP32 Detected");
-    #endif
+  #ifdef ARDUINO_ARDUINO_NANO_ESP32
+    Serial.println("NANO_ESP32 Detected");
+  #endif
 
-    #ifdef RETRO_MODE
-      Serial.println("RETRO Serial Enabled");
-      uart1.begin(4800, SERIAL_8N1, RX1PIN, TX1PIN);
-      uart2.begin(4800, SERIAL_8N1, RX2PIN, TX2PIN);
+  #ifdef RETRO_MODE
+    Serial.println("RETRO Serial Enabled");
+    uart1.begin(4800, SERIAL_8N1, RX1PIN, TX1PIN);
+    uart2.begin(4800, SERIAL_8N1, RX2PIN, TX2PIN);
+  #endif
 
-      connectToWiFi();
-      delay(1000);
-      ntpUDP.begin(ntpPort);
-      delay(1000);
-      sendNtpRequest();  // Initial time request
-    #endif
+  // Initialize EEPROM
+  EEPROM.begin(EEPROM_SIZE);
 
-    // Initialize EEPROM
-    EEPROM.begin(EEPROM_SIZE);
+  // Print current sessions for debugging
+  printAllSessionsInEEPROM();
 
-    // Print current sessions for debugging
-    printAllSessionsInEEPROM();
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(CLEAR_PIN, INPUT_PULLUP);
 
-    pinMode(BUTTON_PIN, INPUT_PULLUP);
-    pinMode(CLEAR_PIN, INPUT_PULLUP);
+  // Connect to WiFi and sync time via NTP
+  connectToWiFi();
+  delay(1000);
+  ntpUDP.begin(ntpPort);
+  delay(1000);
+  sendNtpRequest();  // Initial time request
 
-    // Connect to WiFi and sync time via NTP
+  
+  // Setup button interrupt
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
 
-    
-    // Setup button interrupt
-    attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
+  // Initialize BLE PERIPHERAL
+  BLEDevice::init("BetterSpan Treadmill");
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
 
-    // Initialize BLE
-    BLEDevice::init("BetterSpan Treadmill");
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new MyServerCallbacks());
+  BLEService* pService = pServer->createService(BLE_SERVICE_UUID);
 
-    BLEService* pService = pServer->createService(BLE_SERVICE_UUID);
-
-    dataCharacteristic = pService->createCharacteristic(
-        BLE_DATA_CHAR_UUID,
-        BLECharacteristic::PROPERTY_NOTIFY
-    );
+  dataCharacteristic = pService->createCharacteristic(
+      BLE_DATA_CHAR_UUID,
+      BLECharacteristic::PROPERTY_NOTIFY
+  );
 
   // Add CCCD descriptor (0x2902) and set our custom callback
   BLEDescriptor* cccd = new BLE2902();
@@ -860,6 +866,13 @@ void loop() {
     return -1;
 
   }
+#endif
+
+#ifdef OMNI_CONSOLE_MODE
+
+
+
+
 #endif
 
 
