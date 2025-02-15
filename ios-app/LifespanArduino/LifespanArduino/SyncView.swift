@@ -8,7 +8,7 @@ struct SyncView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 20) {
-                Image("betterspan_fit_round_v1") // Use your image asset name
+                Image("walking-pad-v1") // Use your image asset name
                     .resizable()
                     .scaledToFit()
                     .frame(width: 100, height: 100)
@@ -147,7 +147,7 @@ struct SessionRowView: View {
     }
 
     private var stepsString: String {
-        "\(session.steps) steps"
+        "\(session.steps) Steps"
     }
 
     var body: some View {
