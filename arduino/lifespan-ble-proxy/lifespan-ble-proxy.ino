@@ -30,8 +30,8 @@
 LiquidCrystal_I2C lcd(0x27,20,4);
 
 #define LCD_ENABLED 1
-#define RETRO_MODE 1     // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
-#define BLE_CENTRAL_MODE 1 // UNCOMMENT IF YOU WANT TO GET INFO VIA BLE PROTOCOL.
+//#define RETRO_MODE 0     // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
+#define OMNI_CONSOLE_MODE 1 
 #define LOG_SERIAL 0
 
 // WiFi Credentials
@@ -54,7 +54,7 @@ const char* password = "iloveblake"; // BTW, this is a guest network i created s
   #define TX1PIN 6  // NOT ACTUALLY NEEDED!
   #define RX2PIN 23  // A2, GPIO3, D19
   #define TX2PIN 8  // NOT ACTUALLY NEEDED
-  int steps = 0;
+
   int shouldIUpdateCounter = 0;
   // Define the UART instances
   HardwareSerial uart1(1); // UART1 - RED = CONSOLE TX
@@ -102,6 +102,8 @@ int sessionsStored = 0;
 bool clearedSessions = false;
 int loopCounter=0; // used for timing in main loop
 
+// COMMON STATE VARIABLES (RETRO / OMNI)
+int steps = 0;
 int speedInt = 0;
 float speedFloat = 0;
 boolean isTreadmillActive = 0;
@@ -110,6 +112,206 @@ String lastRecordedDate = "";
 unsigned long totalStepsToday = 0;
 
 TreadmillSession currentSession;
+
+
+#ifdef OMNI_CONSOLE_MODE
+  // Target BLE device and UUIDs
+  const BLEAddress DEVICE_ADDRESS("08:D1:F9:70:E4:3A");
+  const char* CONSOLE_SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb";
+  const char* CONSOLE_CHARACTERISTIC_UUID_FFF1 = "0000fff1-0000-1000-8000-00805f9b34fb";
+  const char* CONSOLE_CHARACTERISTIC_UUID_FFF2 = "0000fff2-0000-1000-8000-00805f9b34fb";
+
+  BLEClient* consoleClient;
+  BLERemoteCharacteristic* consoleNotifyCharacteristic;
+  BLERemoteCharacteristic* consoleWriteCharacteristic; 
+  int consoleCommandIndex = 0; //crashes on 0x15
+  bool consoleIsConnected = false;
+
+  static unsigned long lastConsoleCommandSentAt = 0;  // Stores last we requested a command.
+  const unsigned long consoleCommandUpdateInterval = 500; 
+  volatile int lastConsoleCommandIndex = 0;
+
+  #define MAX_STRINGS 5  // Adjust based on how many hex strings you want to store
+  #define MAX_LENGTH 20  // Adjust based on the longest expected hex string
+  const char *hexStrings[] = {
+    "A188000000",
+    "A189000000",
+    "A191000000",
+    "A185000000",
+    "A187000000",
+    // "A181000000",
+    // "A186000000",
+    // "A182000000",
+
+  };
+  const int consoleCommandCount = MAX_STRINGS;
+  #define CONSOLE_STEPS_INDEX          0
+  #define CONSOLE_SESSION_TIME_INDEX   1
+  #define CONSOLE_SESSION_STATUS_INDEX 2
+  #define CONSOLE_DISTANCE_INDEX 3
+  #define CONSOLE_CALORIES_INDEX 4
+
+
+  // Function to convert hex string to byte array
+  int hexStringToByteArray(const char *hexString, uint8_t *byteArray, int maxSize) {
+      int len = strlen(hexString);
+      if (len % 2 != 0) {
+          Serial.println("Invalid hex string length.");
+          return -1;  // Invalid length
+      }
+
+      int byteCount = len / 2;
+      if (byteCount > maxSize) {
+          Serial.println("Byte array too small.");
+          return -1;  // Not enough space
+      }
+
+      for (int i = 0; i < byteCount; i++) {
+          char buffer[3] = {hexString[i * 2], hexString[i * 2 + 1], '\0'};
+          byteArray[i] = (uint8_t) strtoul(buffer, NULL, 16);
+      }
+
+      return byteCount;
+  }
+
+  void connectToConsoleViaBLE() {
+    // TODO MERGE CODE FRM BLE-CENTRAL-LOOP_THROUGH_COMMANDS to find by device name.
+    Serial.println("Connecting to BLE device...");
+    consoleClient = BLEDevice::createClient();
+
+    if (!consoleClient->connect(DEVICE_ADDRESS)) {
+      Serial.println("Failed to connect to BLE device.");
+      return;
+    }
+
+    Serial.println("Connected to BLE device.");
+    consoleIsConnected = true;
+    lastConsoleCommandSentAt = millis();
+
+    // Access the FFF0 service
+    BLERemoteService* service = consoleClient->getService(CONSOLE_SERVICE_UUID);
+    if (service == nullptr) {
+      Serial.println("Failed to find FFF0 service. Disconnecting...");
+      consoleClient->disconnect();
+      consoleIsConnected = false;
+      return;
+    }
+    Serial.println("FFF0 service found.");
+
+    // Access the FFF1 characteristic for notifications
+    consoleNotifyCharacteristic = service->getCharacteristic(CONSOLE_CHARACTERISTIC_UUID_FFF1);
+    if (consoleNotifyCharacteristic == nullptr) {
+      Serial.println("Failed to find FFF1 characteristic. Disconnecting...");
+      consoleClient->disconnect();
+      consoleIsConnected = false;
+      return;
+    }
+
+    Serial.print("NotifyChar HANDLE: ");
+    Serial.print( consoleNotifyCharacteristic->getHandle(), HEX);
+    Serial.println(" HANDLE");
+    // Subscribe to notifications
+    if (consoleNotifyCharacteristic->canNotify()) {
+      consoleNotifyCharacteristic->registerForNotify(consoleNotifyCallback);
+      Serial.println("Subscribed to notifications on FFF1.");
+    } else {
+      Serial.println("FFF1 characteristic does not support notifications.");
+    }
+
+    // Access the FFF2 characteristic to send commands
+    consoleWriteCharacteristic = service->getCharacteristic(CONSOLE_CHARACTERISTIC_UUID_FFF2);
+    Serial.print("WRITEChar HANDLE: ");
+    Serial.print( consoleWriteCharacteristic->getHandle(), HEX);
+    Serial.println(" HANDLE");
+    if (consoleWriteCharacteristic != nullptr && consoleWriteCharacteristic->canWrite()) {
+      Serial.println("READY for writing");
+    } else {
+      Serial.println("FFF2 characteristic not found or not writable.");
+    }
+  }
+
+    // Callback to handle incoming notifications
+  void consoleNotifyCallback(BLERemoteCharacteristic* pCharacteristic, uint8_t* data, size_t length, bool isNotify) {
+    Serial.printf("RESP %02X: ", lastConsoleCommandIndex );
+    for (size_t i = 0; i < length; i++) {
+      Serial.printf("%02X ", data[i]);
+    }
+
+    // if( length >= 2 && data[1] != 0xFF ) {
+    //   Serial.print(" <-- good?!");
+    // }
+    Serial.print("\n");
+
+    if( lastConsoleCommandIndex == CONSOLE_STEPS_INDEX) {
+      steps = data[2]*256+data[3];
+      Serial.printf("Steps: %d\n", steps);
+    }
+    else if( lastConsoleCommandIndex == CONSOLE_SESSION_STATUS_INDEX) {
+      uint8_t status = data[2];
+      #define STATUS_RUNNING 3
+      #define STATUS_PAUSED 5
+      #define STATUS_SUMMARY_SCREEN 4
+      #define STATUS_STANDBY 1
+
+      Serial.print("Treadmill Status: ");
+      switch(status) {
+        case STATUS_RUNNING: 
+          Serial.print("RUNNING");
+          break;
+        case STATUS_PAUSED: 
+          Serial.print("PAUSED");
+          break;
+        case STATUS_SUMMARY_SCREEN: 
+          Serial.print("SUMMARY_SCREEN");
+          break;
+        case STATUS_STANDBY: 
+          Serial.print("STANDBY");
+          break;
+        default: 
+          Serial.printf("UNKNOWN: '%d'", status);
+      }
+      Serial.print("\n");
+
+      if(status == STATUS_RUNNING) {
+        if( !isTreadmillActive ) {
+          sessionStartedDetected();
+        }
+        isTreadmillActive = true;
+      }
+      else {
+        if( isTreadmillActive ) {
+          sessionEndedDetected();
+        }
+        isTreadmillActive = false;
+      }  
+    }
+  }
+
+  void consoleBLEMainLoop() {
+    static uint8_t byteArray[20];
+
+    if(consoleIsConnected && (millis() - lastConsoleCommandSentAt >= consoleCommandUpdateInterval) /*|| digitalRead(BUTTON_PIN) == 0*/ ) {
+      lastConsoleCommandSentAt = millis();  // Reset timer
+      int size = hexStringToByteArray(hexStrings[consoleCommandIndex], byteArray, sizeof(byteArray));
+
+      Serial.printf("REQ%d: ", consoleCommandIndex);
+      for (size_t i = 0; i < size; i++) {
+        Serial.printf("%02X ", byteArray[i]);
+      }
+      Serial.print("\n");
+
+      consoleWriteCharacteristic->writeValue((uint8_t*)byteArray, size); 
+      lastConsoleCommandIndex = consoleCommandIndex;
+
+      consoleCommandIndex += 1;
+      if( consoleCommandIndex >= consoleCommandCount ) {
+        consoleCommandIndex = 0;
+        //Serial.print("Reset command index back to 0\n");
+      }
+    }
+  }
+#endif
+
 
 // ---------------------------------------------------------------------------
 // LEDs / Indicators
@@ -708,6 +910,12 @@ void setup() {
   pAdvertising->setMaxPreferred(0x12);
   BLEDevice::startAdvertising();
   Serial.println("BLE Advertising started...");
+
+  #ifdef OMNI_CONSOLE_MODE
+    BLEDevice::init("");
+    connectToConsoleViaBLE();
+  #endif
+
 }
 
 void loop() {
@@ -781,6 +989,11 @@ void loop() {
         processRequest();
       }
     }
+  #endif
+
+  
+  #ifdef OMNI_CONSOLE_MODE
+    consoleBLEMainLoop();
   #endif
 
 
@@ -868,12 +1081,77 @@ void loop() {
   }
 #endif
 
-#ifdef OMNI_CONSOLE_MODE
+// #ifdef OMNI_CONSOLE_MODE
+// // Callback to handle incoming notifications
+// void consoleNotifyCallback(BLERemoteCharacteristic* pCharacteristic, uint8_t* data, size_t length, bool isNotify) {
+//   Serial.printf("RESP %02X: ", gJustSent );
+//   for (size_t i = 0; i < length; i++) {
+//     Serial.printf("%02X ", data[i]);
+//   }
 
+//   if( length >= 2 && data[1] != 0xFF ) {
+//     Serial.print(" <-- good?!");
+//   }
 
+//   Serial.print("\n");
+// }
 
+// void connectToConsoleViaBLE() {
+//   // TODO MERGE CODE FRM BLE-CENTRAL-LOOP_THROUGH_COMMANDS to find by device name.
+//   Serial.println("Connecting to BLE device...");
+//   consoleClient = BLEDevice::createClient();
 
-#endif
+//   if (!consoleClient->connect(DEVICE_ADDRESS)) {
+//     Serial.println("Failed to connect to BLE device.");
+//     return;
+//   }
+
+//   Serial.println("Connected to BLE device.");
+//   consoleIsConnected = true;
+//   lastConsoleCommandSentAt = millis();
+
+//   // Access the FFF0 service
+//   BLERemoteService* service = consoleClient->getService(CONSOLE_SERVICE_UUID);
+//   if (service == nullptr) {
+//     Serial.println("Failed to find FFF0 service. Disconnecting...");
+//     consoleClient->disconnect();
+//     consoleIsConnected = false;
+//     return;
+//   }
+//   Serial.println("FFF0 service found.");
+
+//   // Access the FFF1 characteristic for notifications
+//   consoleNotifyCharacteristic = service->getCharacteristic(CONSOLE_CHARACTERISTIC_UUID_FFF1);
+//   if (consoleNotifyCharacteristic == nullptr) {
+//     Serial.println("Failed to find FFF1 characteristic. Disconnecting...");
+//     consoleClient->disconnect();
+//     consoleIsConnected = false;
+//     return;
+//   }
+
+//   Serial.print("NotifyChar HANDLE: ");
+//   Serial.print( consoleNotifyCharacteristic->getHandle(), HEX);
+//   Serial.println(" HANDLE");
+//   // Subscribe to notifications
+//   if (consoleNotifyCharacteristic->canNotify()) {
+//     consoleNotifyCharacteristic->registerForNotify(consoleNotifyCallback);
+//     Serial.println("Subscribed to notifications on FFF1.");
+//   } else {
+//     Serial.println("FFF1 characteristic does not support notifications.");
+//   }
+
+//   // Access the FFF2 characteristic to send commands
+//   consoleWriteCharacteristic = service->getCharacteristic(CONSOLE_CHARACTERISTIC_UUID_FFF2);
+//   Serial.print("WRITEChar HANDLE: ");
+//   Serial.print( consoleWriteCharacteristic->getHandle(), HEX);
+//   Serial.println(" HANDLE");
+//   if (consoleWriteCharacteristic != nullptr && consoleWriteCharacteristic->canWrite()) {
+//     Serial.println("READY for writing");
+//   } else {
+//     Serial.println("FFF2 characteristic not found or not writable.");
+//   }
+// }
+// #endif
 
 
 
