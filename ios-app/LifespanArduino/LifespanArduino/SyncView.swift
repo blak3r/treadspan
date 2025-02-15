@@ -338,14 +338,14 @@ class BLEViewModel: NSObject, ObservableObject {
             healthKitSyncStatusMessage = "Health data not available."
             return
         }
-
-        let writeTypes: Set<HKSampleType> = [stepType]
         
-
+        let writeTypes: Set<HKSampleType> = [stepType]
+        let readTypes: Set<HKObjectType> = [stepType]
+        
         if #available(iOS 12.0, *) {
-            healthStore.getRequestStatusForAuthorization(toShare: writeTypes, read: []) { [weak self] status, error in
+            healthStore.getRequestStatusForAuthorization(toShare: writeTypes, read: readTypes) { [weak self] status, error in
                 guard let self = self else { return }
-
+                
                 if let error = error {
                     print("Error checking HK authorization status: \(error.localizedDescription)")
                     DispatchQueue.main.async {
@@ -353,31 +353,31 @@ class BLEViewModel: NSObject, ObservableObject {
                     }
                     return
                 }
-
+                
                 switch status {
                 case .shouldRequest:
                     print("User has not seen the HealthKit permission prompt yet.")
-                    self.requestHKAuthorization(writeTypes)
+                    self.requestHKAuthorization(writeTypes, readTypes: readTypes)
                 case .unnecessary:
                     print("HealthKit authorization already granted. Saving sessions...")
                     self.saveAllSessionsAsSteps()
                 case .unknown:
                     print("HealthKit authorization status unknown, requesting anyway.")
-                    self.requestHKAuthorization(writeTypes)
+                    self.requestHKAuthorization(writeTypes, readTypes: readTypes)
                 @unknown default:
                     print("New authorization status not handled; requesting anyway.")
-                    self.requestHKAuthorization(writeTypes)
+                    self.requestHKAuthorization(writeTypes, readTypes: readTypes)
                 }
             }
         } else {
-            requestHKAuthorization(writeTypes)
+            requestHKAuthorization(writeTypes, readTypes: readTypes)
         }
     }
 
-    private func requestHKAuthorization(_ writeTypes: Set<HKSampleType>) {
-        healthStore.requestAuthorization(toShare: writeTypes, read: nil) { [weak self] (success, error) in
+    private func requestHKAuthorization(_ writeTypes: Set<HKSampleType>, readTypes: Set<HKObjectType>) {
+        healthStore.requestAuthorization(toShare: writeTypes, read: readTypes) { [weak self] (success, error) in
             guard let self = self else { return }
-
+            
             if let error = error {
                 print("HK authorization error: \(error.localizedDescription)")
                 DispatchQueue.main.async {

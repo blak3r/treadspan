@@ -193,9 +193,10 @@ struct MetricsView: View {
     
     private func requestHealthKitPermission() {
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-        let typesToRead: Set = [stepType]
+        let typesToRead: Set<HKObjectType> = [stepType]
+        let typesToWrite: Set<HKSampleType> = [stepType]
         
-        healthStore.requestAuthorization(toShare: nil, read: typesToRead) { success, error in
+        healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead) { success, error in
             DispatchQueue.main.async {
                 hasPermission = success
                 if success {

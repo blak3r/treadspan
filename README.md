@@ -49,10 +49,22 @@ TO TRY:
 You'll need to have a Mac, install XCode, do things like create a developer certificate, and put your iphone into developer mode.
 It's a fair amount of steps.  If I get enough interest i'll bite the bullet and go through the AppStore process so you don't have to do this.
 
-
 ### Protocol Analysis
 If you're interested in learning more about the reverse engineering of protocol attempts. Then, look in the [Protocol Analysis](/protocol-analysis/README.md) folder.
 Here I include raw captures of the traffic over both the serial port and BLE as well as my notes from reversing the protocols.
+
+## Contributors Welcome
+
+- Port ios mobile app to android.
+- If someone wants to setup a store to sell the programmed hardware / assembled serial port version, be my guest!
+- Looking for donations, to pay for the the $99/year apple developer program so I can release app.
+- Someone to document the full process of getting XCode setup, a developer certificate, how to put the phone into developer mode.
+
+## Get in touch
+
+The best way to get in touch is to go to the issues section and create an issue.
+
+
 
 ## FAQS
 
@@ -103,13 +115,6 @@ The main reason is accuracy and complexity. These alternatives introduce potenti
 
 That said, if someone finds a better approach and wants to contribute, I'd be happy to accept a pull request!
 
-### Contributors Welcome
-
-- Port ios mobile app to android.
-- If someone wants to setup a store to sell the programmed hardware / assembled serial port version, be my guest!
-- Looking for donations, to pay for the the $99/year apple developer program so I can release app. 
-- 
-
 
 ## TODOs
 - TOP PRIORITY: Finish reverse engineering the BLE protocol and see if you can make it robust.
@@ -119,10 +124,9 @@ That said, if someone finds a better approach and wants to contribute, I'd be ha
 - Maybe increase eeprom size to allow for more sessions?
 - What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
 - MOBILE app, metrics page
-  - Don't always request permission
-  - there is like an offset issue, you click on a bar and it displays the wrong bar.
-  - No label anymore.
-  - the 365 query is wrong now.
+  - Don't allow user to go into future.
+  - Sometimes the week view doesn't include the current day.
+
 - Could further optimize the serial code to prevent losing commands... but i'm not sure it going to make a difference.
 
 
