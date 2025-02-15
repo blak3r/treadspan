@@ -20,7 +20,7 @@ First, we program a chip called an Arduino.  This connects to the Omni Console u
 Energy (BLE) protocol.  This allows us to know the status of each workout session in realtime and importantly save EACH
 session to the arduino's internal memory.  
 
-Next, we replacement application for the Lifespan Fit app gets installed on your iPhone.  This connects to the Arduino
+Next, we install an alternative application to mobile phone which replaces Lifespan Fit app gets installed on your iPhone.  This connects to the Arduino
 which is also running a BLE Server and has a custom BLE service that allows the iphone to download each session that was
 saved on the device.  
 
@@ -103,12 +103,18 @@ The main reason is accuracy and complexity. These alternatives introduce potenti
 
 That said, if someone finds a better approach and wants to contribute, I'd be happy to accept a pull request!
 
+### Contributors Welcome
+
+- Port ios mobile app to android.
+- If someone wants to setup a store to sell the programmed hardware / assembled serial port version, be my guest!
+- Looking for donations, to pay for the the $99/year apple developer program so I can release app. 
+- 
 
 
 ## TODOs
 - TOP PRIORITY: Finish reverse engineering the BLE protocol and see if you can make it robust.
 - Reversed it and learned that we can't get time via BLE Protocol
-- 
+- Need to do a full lcd_clear every once in a while.
 - Handle there being no available sessions in EEPROM on mobile app connect.
 - Maybe increase eeprom size to allow for more sessions?
 - What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
