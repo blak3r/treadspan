@@ -80,9 +80,9 @@ struct TreadmillSession {
 };
 
 // BLE UUIDs
-static const char* BLE_SERVICE_UUID       = "12345678-1234-5678-1234-56789abcdef0";
-static const char* BLE_DATA_CHAR_UUID     = "12345678-1234-5678-1234-56789abcdef1";
-static const char* BLE_CONFIRM_CHAR_UUID  = "12345678-1234-5678-1234-56789abcdef2";
+static const char* BLE_SERVICE_UUID       = "0000A51A-12BB-C111-1337-00099AACDEF0";
+static const char* BLE_DATA_CHAR_UUID     = "0000A51A-12BB-C111-1337-00099AACDEF1";
+static const char* BLE_CONFIRM_CHAR_UUID  = "0000A51A-12BB-C111-1337-00099AACDEF2";
 
 // BLE Peripheral Variables
 BLEServer* pServer = nullptr;

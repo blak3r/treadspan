@@ -232,9 +232,9 @@ class BLEViewModel: NSObject, ObservableObject {
     private var confirmCharacteristic: CBCharacteristic?
 
     // Treadmill Service/Characteristics
-    private let serviceUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdef0")
-    private let dataCharUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdef1")
-    private let confirmCharUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdef2")
+    private let serviceUUID = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF0")
+    private let dataCharUUID = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF1")
+    private let confirmCharUUID = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF2")
 
     // Temporary storage for fetched sessions
     private var fetchedSessions: [Session] = []
