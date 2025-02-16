@@ -15,6 +15,7 @@ struct SyncView: View {
                     .clipShape(Circle())
                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                     .shadow(radius: 5)
+
                 Text("TreadSpan")
                     .font(.system(.largeTitle, design: .default))
                     .fontWeight(.heavy)
@@ -44,43 +45,34 @@ struct SyncView: View {
                 .padding(.horizontal)
                 .disabled(viewModel.isFetching)
 
+                // Status message
                 Text(viewModel.statusMessage)
                     .font(.body)
                     .foregroundColor(.gray)
                     .padding(.horizontal)
 
-                // Sessions List with improved styling
+                // Sessions List
                 if !viewModel.sessions.isEmpty {
                     List {
                         ForEach(viewModel.sessions) { session in
-                            SessionRowView(session: session, synced: viewModel.healthKitSyncCompleted)
+                            SessionRowView(
+                                session: session,
+                                synced: viewModel.healthKitSyncCompleted
+                            )
                         }
                     }
                     .listStyle(InsetGroupedListStyle())
                     .frame(maxHeight: 300)
-
-                    // Show the HealthKit sync button if sessions are present and not yet saved.
-                    if !viewModel.healthKitSyncCompleted {
-                        Button(action: {
-                            viewModel.saveToHealthKit()
-                        }) {
-                            Text("Save Sessions to HealthKit")
-                                .font(.title3)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                        }
-                        .padding(.horizontal)
-                    }
                 }
 
                 Spacer()
             }
             .padding()
-            // Toast notification for HealthKit sync status
             .toast(message: $viewModel.healthKitSyncStatusMessage)
+            .onAppear {
+                // Automatically scan/fetch from the treadmill when this view appears
+                viewModel.fetchAndSaveSessions()
+            }
         }
     }
 }
@@ -132,7 +124,6 @@ struct SessionRowView: View {
         Date(timeIntervalSince1970: TimeInterval(session.start))
     }
 
-    // Date in medium style, e.g. "Feb 13, 2025"
     private var dateString: String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -140,7 +131,6 @@ struct SessionRowView: View {
         return formatter.string(from: startDate)
     }
 
-    // Time in 12-hour format without seconds, e.g. "3:45 PM"
     private var timeString: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
@@ -183,7 +173,7 @@ struct Session: Identifiable {
     let steps: UInt32
 
     var displayString: String {
-        // Kept for debugging purposes.
+        // For debugging
         let startDate = Date(timeIntervalSince1970: TimeInterval(start))
         let stopDate  = Date(timeIntervalSince1970: TimeInterval(stop))
         let durationSec = Int(stop - start)
@@ -223,9 +213,7 @@ class BLEViewModel: NSObject, ObservableObject {
     @Published var healthKitSyncStatusMessage: String = ""
     @Published var healthKitSyncCompleted: Bool = false
 
-    // NEW: Flag to indicate a successful “stop” command from the device.
     private var didReceiveStopMarker: Bool = false
-
     private var centralManager: CBCentralManager!
     private var peripheral: CBPeripheral?
 
@@ -244,7 +232,6 @@ class BLEViewModel: NSObject, ObservableObject {
     private let healthStore = HKHealthStore()
     private let stepType = HKObjectType.quantityType(forIdentifier: .stepCount)!
 
-    // Track whether we discovered any device to avoid overwriting messages with "No Treadmill found."
     private var didDiscoverDevice = false
 
     override init() {
@@ -255,10 +242,9 @@ class BLEViewModel: NSObject, ObservableObject {
     // MARK: - Public Methods
 
     func fetchAndSaveSessions() {
-        // Reset previous HealthKit status and our “saved” flag.
+        // Reset previous states
         healthKitSyncStatusMessage = ""
         healthKitSyncCompleted = false
-        // Also reset the stop marker flag
         didReceiveStopMarker = false
 
         guard centralManager.state == .poweredOn else {
@@ -273,7 +259,7 @@ class BLEViewModel: NSObject, ObservableObject {
 
         centralManager.scanForPeripherals(withServices: [serviceUUID], options: nil)
 
-        // If no device is discovered after 10s, declare "No Treadmill found."
+        // If no device is discovered after 10s, stop scanning
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
             self.centralManager.stopScan()
             if !self.didDiscoverDevice && self.peripheral == nil {
@@ -312,20 +298,19 @@ class BLEViewModel: NSObject, ObservableObject {
         print("Attempting to write 0x01 to confirmCharacteristic...")
     }
 
-    // Called when the device sends a stop (done) marker.
     private func handleDoneMarker() {
-        // NEW: Set our flag to indicate we successfully received a stop command.
         didReceiveStopMarker = true
+        isFetching = false
 
         if fetchedSessions.isEmpty {
             statusMessage = "No Sessions to Sync."
         } else {
             statusMessage = "All sessions retrieved."
+            // Automatically push to HealthKit since we have sessions
+            saveToHealthKit()
         }
+
         print("Done marker received from peripheral. Disconnecting...")
-
-        isFetching = false
-
         if let peripheral = peripheral {
             centralManager.cancelPeripheralConnection(peripheral)
         }
@@ -339,14 +324,14 @@ class BLEViewModel: NSObject, ObservableObject {
             healthKitSyncStatusMessage = "Health data not available."
             return
         }
-        
+
         let writeTypes: Set<HKSampleType> = [stepType]
         let readTypes: Set<HKObjectType> = [stepType]
-        
+
         if #available(iOS 12.0, *) {
             healthStore.getRequestStatusForAuthorization(toShare: writeTypes, read: readTypes) { [weak self] status, error in
                 guard let self = self else { return }
-                
+
                 if let error = error {
                     print("Error checking HK authorization status: \(error.localizedDescription)")
                     DispatchQueue.main.async {
@@ -354,7 +339,7 @@ class BLEViewModel: NSObject, ObservableObject {
                     }
                     return
                 }
-                
+
                 switch status {
                 case .shouldRequest:
                     print("User has not seen the HealthKit permission prompt yet.")
@@ -378,7 +363,7 @@ class BLEViewModel: NSObject, ObservableObject {
     private func requestHKAuthorization(_ writeTypes: Set<HKSampleType>, readTypes: Set<HKObjectType>) {
         healthStore.requestAuthorization(toShare: writeTypes, read: readTypes) { [weak self] (success, error) in
             guard let self = self else { return }
-            
+
             if let error = error {
                 print("HK authorization error: \(error.localizedDescription)")
                 DispatchQueue.main.async {
@@ -415,10 +400,12 @@ class BLEViewModel: NSObject, ObservableObject {
             let endDate   = Date(timeIntervalSince1970: TimeInterval(session.stop))
             let quantity  = HKQuantity(unit: .count(), doubleValue: Double(session.steps))
 
-            let stepSample = HKQuantitySample(type: stepType,
-                                              quantity: quantity,
-                                              start: startDate,
-                                              end: endDate)
+            let stepSample = HKQuantitySample(
+                type: stepType,
+                quantity: quantity,
+                start: startDate,
+                end: endDate
+            )
 
             healthStore.save(stepSample) { success, error in
                 if success {
@@ -430,6 +417,7 @@ class BLEViewModel: NSObject, ObservableObject {
                 dispatchGroup.leave()
             }
         }
+
         dispatchGroup.notify(queue: .main) {
             if successCount == self.sessions.count {
                 self.healthKitSyncStatusMessage = "Successfully saved all sessions to HealthKit."
@@ -447,7 +435,7 @@ extension BLEViewModel: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
-            statusMessage = "Ready To Sync"
+            statusMessage = "Ready to sync"
         case .poweredOff:
             statusMessage = "Bluetooth is OFF"
         case .resetting:
@@ -468,7 +456,7 @@ extension BLEViewModel: CBCentralManagerDelegate {
                         advertisementData: [String : Any],
                         rssi RSSI: NSNumber) {
         print("Discovered device: \(peripheral.name ?? "Unknown") - \(peripheral.identifier)")
-        didDiscoverDevice = true  // We found a device
+        didDiscoverDevice = true
         centralManager.stopScan()
 
         self.peripheral = peripheral
@@ -491,7 +479,7 @@ extension BLEViewModel: CBCentralManagerDelegate {
                         error: Error?) {
         statusMessage = "Failed to connect."
         self.peripheral = nil
-        isFetching = false  // Re-enable the fetch button
+        isFetching = false
         print("Connection failed: \(error?.localizedDescription ?? "Unknown error")")
     }
 
@@ -500,13 +488,11 @@ extension BLEViewModel: CBCentralManagerDelegate {
                         error: Error?) {
         print("Disconnected: \(error?.localizedDescription ?? "no error")")
         self.peripheral = nil
-        isFetching = false  // Re-enable the fetch button
-        
+        isFetching = false
+
         // Only update the status if we haven't already received a stop marker.
-        if !didReceiveStopMarker {
-            if sessions.isEmpty {
-                statusMessage = "Disconnected. Please try again."
-            }
+        if !didReceiveStopMarker && sessions.isEmpty {
+            statusMessage = "Disconnected. Please try again."
         }
     }
 }
@@ -559,9 +545,9 @@ extension BLEViewModel: CBPeripheralDelegate {
             return
         }
         if characteristic.isNotifying {
-            print("Notifications/Indications enabled for \(characteristic.uuid)")
+            print("Notifications enabled for \(characteristic.uuid)")
         } else {
-            print("Notifications/Indications disabled for \(characteristic.uuid)")
+            print("Notifications disabled for \(characteristic.uuid)")
         }
     }
 
