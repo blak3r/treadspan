@@ -15,11 +15,12 @@ struct SyncView: View {
                     .clipShape(Circle())
                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                     .shadow(radius: 5)
-
                 Text("TreadSpan")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-
+                    .font(.system(.largeTitle, design: .default))
+                    .fontWeight(.heavy)
+                    .tracking(3)
+                    .textCase(.uppercase)
+              
                 // Fetch/Save Sessions Button with busy indicator
                 Button(action: {
                     viewModel.fetchAndSaveSessions()
@@ -446,7 +447,7 @@ extension BLEViewModel: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
-            statusMessage = "Bluetooth is ON"
+            statusMessage = "Ready To Sync"
         case .poweredOff:
             statusMessage = "Bluetooth is OFF"
         case .resetting:
