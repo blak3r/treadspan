@@ -276,7 +276,7 @@ class BLEViewModel: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
             self.centralManager.stopScan()
             if !self.didDiscoverDevice && self.peripheral == nil {
-                self.statusMessage = "No Treadmill found."
+                self.statusMessage = "No TreadSpan Devices Found."
                 self.isFetching = false
             }
         }
