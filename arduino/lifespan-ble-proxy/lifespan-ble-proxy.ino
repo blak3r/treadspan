@@ -715,7 +715,7 @@ void updateLcd() {
   static uint pageStyle = 0;
 
   lcd.setCursor(0,0);
-  lcd.print("BetterSpan Fit v0.9");
+  lcd.print("TreadSpan v0.9");
   lcd.setCursor(0,1);
   if (pageStyle < 2) {
     lcd.printf("Steps Today: %7lu", getTodaysSteps());
@@ -893,7 +893,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
 
   // BLE init (for Peripheral) to connect to Mobile App
-  BLEDevice::init("BetterSpan Treadmill");
+  BLEDevice::init("TreadSpan");
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 

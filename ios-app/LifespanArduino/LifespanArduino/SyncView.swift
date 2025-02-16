@@ -16,7 +16,7 @@ struct SyncView: View {
                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                     .shadow(radius: 5)
 
-                Text("BetterSpan Fit")
+                Text("TreadSpan")
                     .font(.largeTitle)
                     .fontWeight(.bold)
 
@@ -31,7 +31,7 @@ struct SyncView: View {
                         }
                         .font(.title2)
                     } else {
-                        Text("Fetch/Save Sessions")
+                        Text("Sync Sessions")
                             .font(.title2)
                     }
                 }
@@ -265,7 +265,7 @@ class BLEViewModel: NSObject, ObservableObject {
             return
         }
         isFetching = true
-        statusMessage = "Scanning for Treadmill..."
+        statusMessage = "Scanning for TreadSpan Chip..."
         fetchedSessions.removeAll()
         sessions.removeAll()
         didDiscoverDevice = false
@@ -522,7 +522,7 @@ extension BLEViewModel: CBPeripheralDelegate {
         guard let services = peripheral.services else { return }
 
         for service in services where service.uuid == serviceUUID {
-            print("Found Treadmill service, discovering characteristics...")
+            print("Found TreadSpan service, discovering characteristics...")
             peripheral.discoverCharacteristics([dataCharUUID, confirmCharUUID], for: service)
         }
     }
