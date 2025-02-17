@@ -10,13 +10,10 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <NimBLEDevice.h>
 #include <EEPROM.h>
-#include <sys/time.h>  // For settimeofday()
-#include <time.h>      // For local time functions
+#include <sys/time.h>
+#include <time.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <HardwareSerial.h>
@@ -84,10 +81,10 @@ static const char* BLE_SERVICE_UUID       = "0000A51A-12BB-C111-1337-00099AACDEF
 static const char* BLE_DATA_CHAR_UUID     = "0000A51A-12BB-C111-1337-00099AACDEF1";
 static const char* BLE_CONFIRM_CHAR_UUID  = "0000A51A-12BB-C111-1337-00099AACDEF2";
 
-// BLE Peripheral Variables
-BLEServer* pServer = nullptr;
-BLECharacteristic* dataCharacteristic = nullptr;
-BLECharacteristic* confirmCharacteristic = nullptr;
+// BLE Peripheral Variables (modified for NimBLE)
+NimBLEServer* pServer = nullptr;
+NimBLECharacteristic* dataCharacteristic = nullptr;
+NimBLECharacteristic* confirmCharacteristic = nullptr;
 bool isMobileAppConnected = false;
 bool prevIsMobileAppConnected = false;
 bool isMobileAppSubscribed = false;
@@ -129,9 +126,9 @@ float estimate_mph(int value) {
   const char* CONSOLE_CHARACTERISTIC_UUID_FFF2= "0000fff2-0000-1000-8000-00805f9b34fb";
 
   // BLE client references
-  BLEClient* consoleClient = nullptr;
-  BLERemoteCharacteristic* consoleNotifyCharacteristic = nullptr;
-  BLERemoteCharacteristic* consoleWriteCharacteristic  = nullptr;
+  NimBLEClient* consoleClient = nullptr;
+  NimBLERemoteCharacteristic* consoleNotifyCharacteristic = nullptr;
+  NimBLERemoteCharacteristic* consoleWriteCharacteristic  = nullptr;
   
   bool consoleIsConnected = false;
   int consoleCommandIndex = 0; 
@@ -182,26 +179,36 @@ float estimate_mph(int value) {
   // -----------------------------------------------------------------------
   // BLE Scan -> Look for "LifeSpan-TM"
   // -----------------------------------------------------------------------
-  static BLEAddress foundConsoleAddress("");
+  static NimBLEAddress foundConsoleAddress;// = NimBLEAddress("");//nullptr; //TODO 
   static bool foundConsole = false;
 
-  class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
-    void onResult(BLEAdvertisedDevice advertisedDevice) {
-      // If the device has a name, check if it starts with "LifeSpan-TM"
-      if (advertisedDevice.haveName()) {
-        std::string devName = advertisedDevice.getName();
+  /** Define a class to handle the callbacks when scan events are received */
+class ScanCallbacks : public NimBLEScanCallbacks {
+    void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
+      if( VERBOSE_LOGGING ) { Serial.printf("Advertised Device found: %s\n", advertisedDevice->toString().c_str()); }
+      if (advertisedDevice->haveName() /* advertisedDevice->isAdvertisingService(NimBLEUUID(CONSOLE_SERVICE_UUID))*/) {
+        std::string devName = advertisedDevice->getName();
         if (devName.rfind(CONSOLE_NAME_PREFIX, 0) == 0) {
-          Serial.println("Found LifeSpan console device! Stopping scan.");
-          foundConsoleAddress = advertisedDevice.getAddress();
+          Serial.printf("Found a 'TreadSpan' device at: %s\n", advertisedDevice->getAddress() );
+          /** stop scan before connecting */
+          NimBLEDevice::getScan()->stop();
+          foundConsoleAddress = advertisedDevice->getAddress();
           foundConsole = true;
-          BLEDevice::getScan()->stop(); // Stop scanning as soon as we find one
         }
       }
     }
-  };
+
+    /** Callback to process the results of the completed scan or restart it */
+    void onScanEnd(const NimBLEScanResults& results, int reason) override {
+        Serial.printf("Scan Ended, reason: %d, device count: %d; Restarting scan\n", reason, results.getCount());
+        NimBLEDevice::getScan()->start(1000, false, true);
+    }
+} scanCallbacks;
+
 
   // Callback to handle incoming notifications from the console
-  void consoleNotifyCallback(BLERemoteCharacteristic* pCharacteristic, uint8_t* data, size_t length, bool isNotify) {
+  void consoleNotifyCallback(NimBLERemoteCharacteristic* pCharacteristic, 
+                           uint8_t* data, size_t length, bool isNotify) {
     #if VERBOSE_LOGGING
       Serial.printf("RESP %02X: ", lastConsoleCommandIndex );
       for (size_t i = 0; i < length; i++) {
@@ -266,45 +273,41 @@ float estimate_mph(int value) {
     //   you could parse time if needed
   }
 
-  class MyClientCallback : public BLEClientCallbacks {
-    void onConnect(BLEClient* pclient) override {
-      // Optionally log or set some state here.
+ // Modified BLE Client Callback for NimBLE
+  class MyClientCallback : public NimBLEClientCallbacks {
+    void onConnect(NimBLEClient* pclient) override {
       Serial.println("Console client connected.");
     }
 
-    void onDisconnect(BLEClient* pclient) override {
-      // Mark our connection status as false
+    void onDisconnect(NimBLEClient* pclient, int reason) override {
       Serial.println("Console client disconnected.");
       consoleIsConnected = false;
     }
   };
 
-  // Actually connect to the discovered console
   void connectToFoundConsole() {
-    consoleClient = BLEDevice::createClient();
+    consoleClient = NimBLEDevice::createClient();
     consoleClient->setClientCallbacks(new MyClientCallback());
 
     Serial.printf("Attempting to connect to: %s\n", foundConsoleAddress.toString().c_str());
 
     if (!consoleClient->connect(foundConsoleAddress)) {
       Serial.println("Failed to connect to LifeSpan console device.");
-      consoleIsConnected = false;   // Ensure we mark false on fail
+      consoleIsConnected = false;
       return;
     }
 
-    // If connected, discover the service & characteristics
     consoleIsConnected = true;
     lastConsoleCommandSentAt = millis();
     Serial.println("Connected to console. Discovering services...");
 
-    BLERemoteService* service = consoleClient->getService(CONSOLE_SERVICE_UUID);
+    NimBLERemoteService* service = consoleClient->getService(CONSOLE_SERVICE_UUID);
     if (service == nullptr) {
       Serial.println("Failed to find FFF0 service. Disconnecting...");
       consoleClient->disconnect();
       consoleIsConnected = false;
       return;
     }
-    Serial.println("FFF0 service found.");
 
     // FFF1: Notify characteristic
     consoleNotifyCharacteristic = service->getCharacteristic(CONSOLE_CHARACTERISTIC_UUID_FFF1);
@@ -314,18 +317,15 @@ float estimate_mph(int value) {
       consoleIsConnected = false;
       return;
     }
+
     if (consoleNotifyCharacteristic->canNotify()) {
-      consoleNotifyCharacteristic->registerForNotify(consoleNotifyCallback);
+      consoleNotifyCharacteristic->subscribe(true, consoleNotifyCallback);
       Serial.println("Subscribed to notifications on FFF1.");
-    } else {
-      Serial.println("FFF1 characteristic does not support notifications.");
     }
 
     // FFF2: Write characteristic
     consoleWriteCharacteristic = service->getCharacteristic(CONSOLE_CHARACTERISTIC_UUID_FFF2);
-    if (consoleWriteCharacteristic != nullptr && consoleWriteCharacteristic->canWrite()) {
-      Serial.println("FFF2 (write) characteristic found and is writable.");
-    } else {
+    if (!consoleWriteCharacteristic || !consoleWriteCharacteristic->canWrite()) {
       Serial.println("FFF2 characteristic not found or not writable.");
       consoleClient->disconnect();
       consoleIsConnected = false;
@@ -333,18 +333,21 @@ float estimate_mph(int value) {
     }
   }
 
-  // Public function to scan for "LifeSpan-TM" device & connect
+   // Public function to scan for "LifeSpan-TM" device & connect
   void connectToConsoleViaBLE() {
     Serial.println("Scanning for LifeSpan Treadmill console...");
 
     // Reset flags
     foundConsole = false;
-    foundConsoleAddress = BLEAddress("");
+    //foundConsoleAddress = NimBLEAddress(""); // TODO
 
-    BLEScan *pBLEScan = BLEDevice::getScan();
-    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    NimBLEScan* pBLEScan = NimBLEDevice::getScan();
+    pBLEScan->setScanCallbacks(&scanCallbacks, false);
     pBLEScan->setActiveScan(true);
-    pBLEScan->start(1, false); // Scan for 5 seconds
+    pBLEScan->start(3, false); // Scan for 1 second
+    
+    // NimBLE requires a small delay after scanning
+    delay(50);
 
     if (foundConsole) {
       connectToFoundConsole();
@@ -352,6 +355,7 @@ float estimate_mph(int value) {
       Serial.println("No LifeSpan-TM device found in scan window.");
     }
   }
+
 
   // Send read requests (hexStrings) in a round-robin fashion
   void consoleBLEMainLoop() {
@@ -714,8 +718,15 @@ String getCurrentSessionElapsed() {
 void updateLcd() {
   static uint pageStyle = 0;
 
+  #if OMNI_CONSOLE_MODE
+  if( pageStyle == 0 ) {
+    Serial.println("Clearing LCD");
+    lcd.clear(); // Causes additional blocking i didn't want in the Serial mode.
+  }
+  #endif
+
   lcd.setCursor(0,0);
-  lcd.print("TreadSpan v0.9");
+  lcd.print("TreadSpan v0.9.1");
   lcd.setCursor(0,1);
   if (pageStyle < 2) {
     lcd.printf("Steps Today: %7lu", getTodaysSteps());
@@ -739,65 +750,22 @@ void updateLcd() {
 #endif
 
 // ---------------------------------------------------------------------------
-// BLE DESCRIPTOR CALLBACKS
-// ---------------------------------------------------------------------------
-class MyDescriptorCallbacks : public BLEDescriptorCallbacks {
-  void onWrite(BLEDescriptor* pDescriptor) override {
-    // The CCCD value is typically 2 bytes: 
-    //  - 0x01 0x00 for NOTIFY 
-    //  - 0x02 0x00 for INDICATE 
-    //  - 0x00 0x00 means unsubscribed
-    uint8_t* cccdData = pDescriptor->getValue();
-    if (cccdData == nullptr) return;
-    if (cccdData[0] == 0x01) { // Notify
-      isMobileAppSubscribed = true;
-      Serial.println("Client subscribed to NOTIFY!");
-    }
-    else if (cccdData[0] == 0x02) { // Indicate
-      isMobileAppSubscribed = true;
-      Serial.println("Client subscribed to INDICATE!");
-    }
-    else {
-      isMobileAppSubscribed = false;
-      Serial.printf("Client unsubscribed or unknown cccdData[0]=0x%02X\n", cccdData[0]);
-    }
-  }
-};
-
-// ---------------------------------------------------------------------------
-// BLE Confirmation Characteristic Callback
-// ---------------------------------------------------------------------------
-void indicateNextSession();
-
-class ConfirmCallback : public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic *pCharacteristic) override {
-    std::string rawValue = pCharacteristic->getValue();
-    String rxValue = String(rawValue.c_str());
-        
-    Serial.print("ConfirmCallback::onWrite got bytes: ");
-    for (int i = 0; i < rxValue.length(); i++) {
-      Serial.printf("%02X ", rxValue[i]);
-    }
-    Serial.println();
-
-    // If the client writes 0x01, we send the next session
-    if (rxValue.length() > 0 && rxValue[0] == 0x01) {
-      indicateNextSession();
-    }
-  }
-};
-
-// ---------------------------------------------------------------------------
 // BLE Server Callbacks
 // ---------------------------------------------------------------------------
-class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) override {
+// Modified Server Callbacks for NimBLE
+class MyServerCallbacks : public NimBLEServerCallbacks {
+  /**
+   * This onConnect is called when the mobile app connects to the main Service
+   * There is an onSubscribe which is called when the mobile app subscribes to notifications on the data characteristic.
+   */
+  void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
     isMobileAppConnected = true;
     haveNotifiedMobileAppOfFirstSession = false;
     Serial.println(">> Mobile app connected!");
     updateLcd();
   }
-  void onDisconnect(BLEServer* pServer) override {
+
+  void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
     isMobileAppConnected = false;
     isMobileAppSubscribed = false;
     haveNotifiedMobileAppOfFirstSession = false;
@@ -807,6 +775,63 @@ class MyServerCallbacks : public BLEServerCallbacks {
     Serial.println(">> Advertising restarted...");
   }
 };
+
+// Characteristic callbacks for the data characteristic
+class DataCharacteristicCallbacks: public NimBLECharacteristicCallbacks {
+    void onSubscribe(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo, uint16_t subValue) override {
+        if (subValue == 0) {
+            isMobileAppSubscribed = false;
+            Serial.println(" << Client unsubscribed");
+        } else {
+            isMobileAppSubscribed = true;
+            Serial.printf("  >> Client subscribed to notifications! subValue=%d\n", subValue);
+        }
+    }
+    
+    void onRead(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+        Serial.printf("%s : onRead(), value: %s\n",
+               pCharacteristic->getUUID().toString().c_str(),
+               pCharacteristic->getValue().c_str());
+    }
+
+    void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+        Serial.printf("%s : onWrite(), value: %s\n",
+               pCharacteristic->getUUID().toString().c_str(),
+               pCharacteristic->getValue().c_str());
+    }
+
+    /**
+     *  The value returned in code is the NimBLE host return code.
+     */
+    void onStatus(NimBLECharacteristic* pCharacteristic, int code) override {
+        Serial.printf("Notification/Indication onStatus(), return code: %d, %s\n", code, NimBLEUtils::returnCodeToString(code));
+    }
+};
+
+// ---------------------------------------------------------------------------
+// BLE Confirmation Characteristic Callback
+// ---------------------------------------------------------------------------
+void indicateNextSession();
+
+// Modified Characteristic Callbacks for NimBLE
+class ConfirmCallback : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+    std::string rawValue = pCharacteristic->getValue();
+    String rxValue = String(rawValue.c_str());
+
+    Serial.print("ConfirmCallback::onWrite got bytes: ");
+    for (int i = 0; i < rxValue.length(); i++) {
+      Serial.printf("%02X ", rxValue[i]);
+    }
+    Serial.println();
+
+    if (rxValue.length() > 0 && rxValue[0] == 0x01) {
+      indicateNextSession();
+    }
+  }
+};
+
+
 
 // ---------------------------------------------------------------------------
 // Indicate (Notify) Next Session
@@ -818,7 +843,7 @@ void indicateNextSession() {
     setSessionCountInEEPROM(0);
     EEPROM.commit();
     currentSessionIndex = 0;
-    haveNotifiedMobileAppOfFirstSession = false;
+    //haveNotifiedMobileAppOfFirstSession = false;
 
     // Send a done marker
     uint8_t donePayload[1] = {0xFF};
@@ -892,37 +917,57 @@ void setup() {
   // Setup button interrupt
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
 
-  // BLE init (for Peripheral) to connect to Mobile App
-  BLEDevice::init("TreadSpan");
-  pServer = BLEDevice::createServer();
+  // Initialize NimBLE
+  NimBLEDevice::init("TreadSpan");
+   
+  // Get and print the device's Bluetooth MAC address
+  Serial.print("Bluetooth MAC Address: ");
+  Serial.println(NimBLEDevice::getAddress().toString().c_str());
+  
+  // Optional: Set transmission power
+  NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+
+  pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
-  BLEService* pService = pServer->createService(BLE_SERVICE_UUID);
+  NimBLEService* pService = pServer->createService(BLE_SERVICE_UUID);
+
+
 
   dataCharacteristic = pService->createCharacteristic(
       BLE_DATA_CHAR_UUID,
-      BLECharacteristic::PROPERTY_NOTIFY
+      NIMBLE_PROPERTY::NOTIFY
   );
-  // Add CCCD descriptor + callback
-  BLEDescriptor* cccd = new BLE2902();
-  cccd->setCallbacks(new MyDescriptorCallbacks());
-  dataCharacteristic->addDescriptor(cccd);
+  dataCharacteristic->setCallbacks(new DataCharacteristicCallbacks());
+  // AUTHOR NOTE: The NimBLE documentation regarding notify characteristics doesn't really make any sense to me. 
+  // Seems like you do not need to do anything special for 2904 stuff the above is sufficient.
+  // Uncommenting the code below doesn't hurt anything but... isn't needed.
+  /**
+    *  2902 and 2904 descriptors are a special case, when createDescriptor is called with
+    *  either of those uuid's it will create the associated class with the correct properties
+    *  and sizes. However we must cast the returned reference to the correct type as the method
+    *  only returns a pointer to the base NimBLEDescriptor class.
+    */
+  //NimBLE2904* pBeef2904 = dataCharacteristic->create2904();
+  //pBeef2904->setFormat(NimBLE2904::FORMAT_UTF8);
+  //pBeef2904->setCallbacks(&dscCallbacks);
 
   confirmCharacteristic = pService->createCharacteristic(
       BLE_CONFIRM_CHAR_UUID,
-      BLECharacteristic::PROPERTY_WRITE
+      NIMBLE_PROPERTY::WRITE
   );
   confirmCharacteristic->setCallbacks(new ConfirmCallback());
 
   pService->start();
 
   // Start advertising (Peripheral)
-  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+ // Start advertising
+  NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(BLE_SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);
-  pAdvertising->setMaxPreferred(0x12);
-  BLEDevice::startAdvertising();
+  //pAdvertising->setScanResponse(true);
+  //pAdvertising->setMinPreferred(0x06);
+  //pAdvertising->setMaxPreferred(0x12);
+  NimBLEDevice::startAdvertising();
   Serial.println("BLE Advertising started...");
 
 #ifdef OMNI_CONSOLE_MODE
