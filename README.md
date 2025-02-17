@@ -1,6 +1,4 @@
-# Better LifeSpan Fit
-
-This is a solution that makes 
+# Treadspan (formerly Better LifeSpan Fit)
 
 Lifespan makes great hardware (Treadmills) but their software is the achilles heel.  It's so close to being an incredible
 platform for logging steps. 
@@ -35,17 +33,22 @@ saved on the device.
 vs. steps logged organically through a watch or iphone.
 
 ### Hardware
-1. Buy one of these: https://www.amazon.com/gp/product/B07QCP2451/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&th=1 (link sells you two of them, buying 1 is 9.99 so for $1 you get two which is just a good idea to have a spare)
-2. Setup the Arduino IDE for ESP32 support. See this guide: <https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/>
-3. Open the .ino file in the arduino folder.
-4. Upload to your device.
 
-The chip is powered by a USB Micro connector.  So, you can find an old charger you have laying around and put the chip somewhere out of the way.  It needs to be close to the Omni console but can basically just be in the same room.  
+#### Easy Install
+Unless you intend to modify the source code you should do the following:
+1. Buy a supported chip. (Arduino Nano ESP32)
+2. Install the usb serial drivers. <https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads>
+3. Connect the chip to your computer.
+4. Go here: https://blak3r.github.io/treadspan-web-installer/ and follow instructions.
+
+#### Setup Arduino Development Environment.
+1. Setup the Arduino IDE for ESP32 support. See this guide: <https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/>
+2. Open the .ino file in the arduino folder.
+3. You'll likely need to install a few libraries such as NimBLE.
+4. Once you have the environment setup, you can press the Upload button in the IDE.
+
+The chip is powered by USB.  So, you can find an old charger you have laying around and put the chip somewhere out of the way.  It needs to be close to the Omni console but can basically just be in the same room.  
 You can wrap the chip in electric tape if you're worried about it touching other metal.
-
-TO TRY:
-- I believe the Arduino Nano ESP32 would work and would require less setup.
-- ESP32 OLED Lora 32 V3 has a display and two buttons and you can buy an enclosure for it!
 
 ### Mobile App
 You'll need to have a Mac, install XCode, do things like create a developer certificate, and put your iphone into developer mode.
@@ -57,16 +60,15 @@ Here I include raw captures of the traffic over both the serial port and BLE as 
 
 ## Contributors Welcome
 
-- Port ios mobile app to android.
-- If someone wants to setup a store to sell the programmed hardware / assembled serial port version, be my guest!
-- Looking for donations, to pay for the the $99/year apple developer program so I can release app.
+- Would love some donations, spent at least $200 on an IOS Developer Account to publish to appstore, and evaluating hardware options. (Not to mention probably 50 hours of development)
+- Port the iOS App to Android. (AI tools should be able to do most of it)
+- The serial port version is likely out of reach for someone who has never used a breadboard before.  If someone wants to create a store and sell assembled hardware, i'll gladly link you! 
 - Someone to document the full process of getting XCode setup, a developer certificate, how to put the phone into developer mode.
 
-## Get in touch
+## Get Help / Support
 
-The best way to get in touch is to go to the issues section and create an issue.
-
-
+If you have a question go here: https://github.com/blak3r/treadspan/discussions
+If you want to report a bug go here: https://github.com/blak3r/treadspan/issues
 
 ## FAQS
 
@@ -117,14 +119,18 @@ The main reason is accuracy and complexity. These alternatives introduce potenti
 
 That said, if someone finds a better approach and wants to contribute, I'd be happy to accept a pull request!
 
+### Is it possible to control treadmill through mobile app?
+I have not found anyway to control the treadmill through the BLE protocol.
+It is theoretically possible to write commands to the treadmill via the serial protocol.
+But, realistically you can't unless you were willing to sacrifice your existing console and only 
+control it through the mobile app (you would also need the more complicated hardware setup and custom firmware).
 
 ## TODOs
 HIGH
-- Write the BLE method arduino code to detect sessions. 
 - Create a means to configure the WiFi (with a bluetooth)
+- Make BLE code very robust.
 
 MED
-- Finalize App Name
 - Change the bundle id?
 - MOBILE app, metrics page
   - Don't allow user to go into future.
