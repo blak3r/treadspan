@@ -214,7 +214,7 @@ struct MetricsView: View {
         // First fetch total steps
         fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents) { totalSteps in
             // Fetch LifespanArduino steps
-            fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifespanArduino") { arduinoSteps in
+            fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "TreadSpan") { arduinoSteps in
                 // Then fetch Lifespan Fit steps
                 fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifeSpan") { fitSteps in
                     DispatchQueue.main.async {
@@ -251,7 +251,7 @@ struct MetricsView: View {
             start: startDate,
             end: endDate,
             components: DateComponents(day: 1),
-            sourceName: "LifespanArduino"
+            sourceName: "TreadSpan"
         ) { steps in
             arduinoTotal = Int(steps.values.reduce(0, +))
             group.leave()
