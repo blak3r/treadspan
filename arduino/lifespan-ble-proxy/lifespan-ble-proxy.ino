@@ -15,32 +15,46 @@
 #include <sys/time.h>
 #include <time.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
+#include <ImprovWiFiLibrary.h>
+
 #include <HardwareSerial.h>
 
-LiquidCrystal_I2C lcd(0x27,20,4);
-
 #define LCD_ENABLED 1
-//#define RETRO_MODE 0        // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
-#define OMNI_CONSOLE_MODE 1   // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
+//#define RETRO_MODE 1        // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
+#define OMNI_CONSOLE_MODE 1   // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA BLE (requires OMNI CONSOLE)
 #define VERBOSE_LOGGING 0
+#define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1 // 1 should be the default, if 1 it must of been flashed via the WEBINSTALLER, 
+
+
+#if LOAD_WIFI_CREDENTIALS_FROM_EEPROM 
+
+#else
+  const char* ssid = "Angela";
+  const char* password = "iloveblake"; // Example guest network password for demonstration
+#endif 
+
+// DEPENDENT LIBARIES
+#if LCD_ENABLED 
+  #include <LiquidCrystal_I2C.h>
+  LiquidCrystal_I2C lcd(0x27,20,4);
+#endif
 
 #if !defined(RETRO_MODE) && !defined(OMNI_CONSOLE_MODE)
   #error "At least one must be defined: RETRO_MODE or OMNI_CONSOLE_MODE"
 #endif 
-
-// WiFi Credentials
-const char* ssid = "Angela";
-const char* password = "iloveblake"; // Example guest network password for demonstration
 
 // ARDUINO NANO PINOUT
 #define BUTTON_PIN 2 // D2
 #define CLEAR_PIN  3 // D3  - Clears all sessions in EEPROM
 
 // EEPROM Configuration
-#define EEPROM_SIZE        512
-#define MAX_SESSIONS       42
-#define SESSION_SIZE_BYTES 12
+#define EEPROM_SIZE             512
+#define MAX_SSID_LENGTH         32
+#define SSID_INDEX              0
+#define PASSWORDS_INDEX         32
+#define SESSIONS_START_INDEX    64
+#define MAX_SESSIONS            ((512-(64+4))/12)
+#define SESSION_SIZE_BYTES      12
 
 #ifdef RETRO_MODE
   // RETRO VERSION UART CONFIGURATION
@@ -86,14 +100,12 @@ NimBLEServer* pServer = nullptr;
 NimBLECharacteristic* dataCharacteristic = nullptr;
 NimBLECharacteristic* confirmCharacteristic = nullptr;
 bool isMobileAppConnected = false;
-bool prevIsMobileAppConnected = false;
 bool isMobileAppSubscribed = false;
 bool haveNotifiedMobileAppOfFirstSession = false;
 
 int currentSessionIndex = 0;
 int sessionsStored = 0;
 bool clearedSessions = false;
-int loopCounter=0; // used for timing in main loop
 
 // COMMON STATE VARIABLES (RETRO / OMNI)
 int steps = 0;
@@ -109,6 +121,7 @@ String lastRecordedDate = "";
 unsigned long totalStepsToday = 0;
 
 TreadmillSession currentSession;
+ImprovWiFi improvSerial(&Serial);
 
 // Function to estimate speed in MPH based on integer value (common between retro and omni ble protocol)
 // TODO figure out how to do kph... but technically i'm only using this to display to a debug lcd so probably wouldn't bother.
@@ -121,7 +134,7 @@ float estimate_mph(int value) {
   #define CONSOLE_NAME_PREFIX "LifeSpan-TM"
 
   // UUIDs for the console's custom service/characteristics
-  const char* CONSOLE_SERVICE_UUID           = "0000fff0-0000-1000-8000-00805f9b34fb";
+  const char* CONSOLE_SERVICE_UUID            = "0000fff0-0000-1000-8000-00805f9b34fb";
   const char* CONSOLE_CHARACTERISTIC_UUID_FFF1= "0000fff1-0000-1000-8000-00805f9b34fb";
   const char* CONSOLE_CHARACTERISTIC_UUID_FFF2= "0000fff2-0000-1000-8000-00805f9b34fb";
 
@@ -280,7 +293,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     }
 
     void onDisconnect(NimBLEClient* pclient, int reason) override {
-      Serial.println("Console client disconnected.");
+      Serial.println(" !!! Console client disconnected.");
       consoleIsConnected = false;
     }
   };
@@ -361,8 +374,14 @@ class ScanCallbacks : public NimBLEScanCallbacks {
   void consoleBLEMainLoop() {
     static uint8_t byteArray[20];
 
-    // If connected, cycle through the known commands
-    if(consoleIsConnected) {
+    // If console is not connected, try to reconnect periodically
+    if (!consoleIsConnected) {
+      static unsigned long lastTry = 0;
+      if (millis() - lastTry > 5000) { 
+        lastTry = millis();
+        connectToConsoleViaBLE(); 
+      }
+    } else {
       // If enough time has passed, send the next read request
       if ( (millis() - lastConsoleCommandSentAt >= consoleCommandUpdateInterval) ) {
         lastConsoleCommandSentAt = millis(); // Reset timer
@@ -405,17 +424,57 @@ void setLed( uint8_t color, bool status ) {
 // ---------------------------------------------------------------------------
 // Wifi / NTP
 // ---------------------------------------------------------------------------
+void trimString(char* str, int maxLength) {
+    for (int i = 0; i < maxLength; i++) {
+        if (str[i] == '\0') break;  // Stop at first null
+    }
+}
+
+void loadWiFiCredentialsFromEEPROM(char* ssid, char* password) {
+    for (int i = 0; i < MAX_SSID_LENGTH; i++) {
+        ssid[i] = EEPROM.read(SSID_INDEX + i);
+        if (ssid[i] == '\0') break;
+    }
+    ssid[MAX_SSID_LENGTH - 1] = '\0';
+    
+    for (int i = 0; i < MAX_SSID_LENGTH; i++) {
+        password[i] = EEPROM.read(PASSWORDS_INDEX + i);
+        if (password[i] == '\0') break;
+    }
+    password[MAX_SSID_LENGTH - 1] = '\0';
+    
+    Serial.print("Loaded SSID: ");
+    Serial.println(ssid);
+    Serial.print("Loaded Password: ");
+    Serial.println(password);
+}
+
+void getWifiCredentialsAndCallWifiBegin() {
+  #if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
+    char ssid[32], password[32];
+    loadWiFiCredentialsFromEEPROM(ssid, password);
+  #else 
+    //Serial.println("Using SSID from Program Memory named: %s", ssid);
+  #endif  
+
+  WiFi.begin(ssid, password);
+}
+
 void connectToWiFi() {
   #if LCD_ENABLED
     lcd.clear();
     lcd.print("Connecting to WiFi");
   #endif
+
   Serial.print("Connecting to WiFi...");
-  WiFi.begin(ssid, password);
+  
+  getWifiCredentialsAndCallWifiBegin(); // loads from SSID/PASS from file system or program memory depending on build configs.
+
   while (WiFi.status() != WL_CONNECTED) {
       delay(1000);
       Serial.print(".");
       toggleLedColor(RED_LED);
+      improvSerial.handleSerial();
   }
   Serial.println("\nConnected to WiFi!");
   #if LCD_ENABLED
@@ -500,8 +559,10 @@ String getFormattedTime() {
 // ---------------------------------------------------------------------------
 // EEPROM Layout & Session Struct
 // ---------------------------------------------------------------------------
-//  - [0..3]   : uint32_t sessionCount
-//  - [4..end] : session data in blocks of 12 bytes each
+//  - [0...31]   : WiFi SSID
+//  - [32..63]   : WiFi PASS
+//  - [64..67]   : uint32_t sessionCount
+//  - [68..end] : session data in blocks of 12 bytes each
 //
 // Each session block: 
 //    Byte 0..3  : start time (Big-endian)
@@ -511,26 +572,26 @@ String getFormattedTime() {
 
 uint32_t getSessionCountFromEEPROM() {
   uint32_t count = 0;
-  count |= (EEPROM.read(0) << 24);
-  count |= (EEPROM.read(1) << 16);
-  count |= (EEPROM.read(2) << 8);
-  count |= EEPROM.read(3);
+  count |= (EEPROM.read(SESSIONS_START_INDEX + 0) << 24);
+  count |= (EEPROM.read(SESSIONS_START_INDEX + 1) << 16);
+  count |= (EEPROM.read(SESSIONS_START_INDEX + 2) << 8);
+  count |= EEPROM.read(SESSIONS_START_INDEX + 3);
   sessionsStored = count;
   return count;
 }
 
 void setSessionCountInEEPROM(uint32_t count) {
   sessionsStored = count;
-  EEPROM.write(0, (count >> 24) & 0xFF);
-  EEPROM.write(1, (count >> 16) & 0xFF);
-  EEPROM.write(2, (count >> 8) & 0xFF);
-  EEPROM.write(3, count & 0xFF);
+  EEPROM.write(SESSIONS_START_INDEX + 0, (count >> 24) & 0xFF);
+  EEPROM.write(SESSIONS_START_INDEX + 1, (count >> 16) & 0xFF);
+  EEPROM.write(SESSIONS_START_INDEX + 2, (count >> 8) & 0xFF);
+  EEPROM.write(SESSIONS_START_INDEX + 3, count & 0xFF);
   EEPROM.commit();
 }
 
 TreadmillSession readSessionFromEEPROM(int index) {
   TreadmillSession session;
-  int startAddress = 4 + (index * SESSION_SIZE_BYTES);
+  int startAddress = SESSIONS_START_INDEX + 4 + (index * SESSION_SIZE_BYTES);
 
   session.start = ((uint32_t)EEPROM.read(startAddress)     << 24) |
                   ((uint32_t)EEPROM.read(startAddress + 1) << 16) |
@@ -551,7 +612,7 @@ TreadmillSession readSessionFromEEPROM(int index) {
 }
 
 void writeSessionToEEPROM(int index, TreadmillSession session) {
-  int startAddress = 4 + (index * SESSION_SIZE_BYTES);
+  int startAddress = SESSIONS_START_INDEX + 4 + (index * SESSION_SIZE_BYTES);
 
   EEPROM.write(startAddress,     (session.start >> 24) & 0xFF);
   EEPROM.write(startAddress + 1, (session.start >> 16) & 0xFF);
@@ -624,6 +685,50 @@ void recordSessionToEEPROM( TreadmillSession session ) {
     totalStepsToday = 0;
   }
   totalStepsToday += session.steps;
+}
+
+
+void onImprovWiFiErrorCb(ImprovTypes::Error err) {
+  Serial.println("onImprovWifiErrorCb");
+  Serial.println(err);
+}
+
+void saveWiFiCredentials(const char* ssid, const char* password) {
+  if (strlen(ssid) > 32 || strlen(password) > 32) {
+      Serial.println("Error: SSID or password too long");
+      return;
+  }
+  
+  // Write SSID to EEPROM
+  for (int i = 0; i < MAX_SSID_LENGTH; i++) {
+      EEPROM.write(SSID_INDEX + i, (i < strlen(ssid)) ? ssid[i] : '\0');
+  }
+  
+  // Write Password to EEPROM
+  for (int i = 0; i < MAX_SSID_LENGTH; i++) {
+      EEPROM.write(PASSWORDS_INDEX + i, (i < strlen(password)) ? password[i] : '\0');
+  }
+  
+  EEPROM.commit(); // Ensure data is written (needed for ESP8266/ESP32)
+  Serial.println("WiFi credentials saved to EEPROM");
+}
+
+void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
+  Serial.println("IS: onImprovWiFiConnectedCb");
+  saveWiFiCredentials(ssid, password);
+}
+
+bool connectWifi(const char *ssid, const char *password) {
+  Serial.println("IS: connectWifi");
+  WiFi.begin(ssid, password);
+
+  while (!improvSerial.isConnected())
+  {
+    //blink_led(500, 1);
+    //toggleLedColor(LED_RED);
+  }
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -715,18 +820,30 @@ String getCurrentSessionElapsed() {
   return String(buffer).c_str();
 }
 
+void lcdPrintBoolIndicator(boolean pValue ) {
+  if( pValue ) {
+    lcd.print("+");
+  } else {
+    lcd.print("-");
+  }
+}
+
 void updateLcd() {
   static uint pageStyle = 0;
 
   #if OMNI_CONSOLE_MODE
   if( pageStyle == 0 ) {
-    Serial.println("Clearing LCD");
+    Serial.printf("Clearing LCD, consoleIsConn: %d, isMobileAppConn: %d, isMobileSubs:%\n", consoleIsConnected, isMobileAppConnected, isMobileAppSubscribed);
     lcd.clear(); // Causes additional blocking i didn't want in the Serial mode.
   }
   #endif
 
   lcd.setCursor(0,0);
-  lcd.print("TreadSpan v0.9.1");
+  lcd.print("TreadSpan v0.9.2 ");
+  lcdPrintBoolIndicator(consoleIsConnected);
+  lcdPrintBoolIndicator(isMobileAppConnected);
+  lcdPrintBoolIndicator(isMobileAppSubscribed);
+  
   lcd.setCursor(0,1);
   if (pageStyle < 2) {
     lcd.printf("Steps Today: %7lu", getTodaysSteps());
@@ -747,6 +864,18 @@ void updateLcd() {
     lcd.print(" OR Start Walking!  ");
   }
 }
+
+void periodicLcdUpdateMainLoopHandler() {
+  // Periodic LCD refresh
+  static unsigned long lastLcdUpdate = 0;
+  const unsigned long lcdUpdateInterval = 1000;
+  if (millis() - lastLcdUpdate >= lcdUpdateInterval) {
+    updateLcd();
+    lastLcdUpdate = millis();
+  }
+}
+
+
 #endif
 
 // ---------------------------------------------------------------------------
@@ -781,10 +910,10 @@ class DataCharacteristicCallbacks: public NimBLECharacteristicCallbacks {
     void onSubscribe(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo, uint16_t subValue) override {
         if (subValue == 0) {
             isMobileAppSubscribed = false;
-            Serial.println(" << Client unsubscribed");
+            Serial.println(" << Mobile app unsubscribed");
         } else {
             isMobileAppSubscribed = true;
-            Serial.printf("  >> Client subscribed to notifications! subValue=%d\n", subValue);
+            Serial.printf("  >> Mobile app SUBSCRIBED to notifications! subValue=%d\n", subValue);
         }
     }
     
@@ -904,6 +1033,10 @@ void setup() {
   EEPROM.begin(EEPROM_SIZE);
   printAllSessionsInEEPROM();
 
+  // const char* ssid = "Angela";
+  // const char* password = "iloveblake"; 
+  // saveWiFiCredentials(ssid, password);
+
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(CLEAR_PIN, INPUT_PULLUP);
 
@@ -975,22 +1108,29 @@ void setup() {
   // We'll do the initial connect attempt here:
   connectToConsoleViaBLE();
 #endif
+
+  improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "My-Device-9a4c2b", "0.9.2", "Treadspan");
+  improvSerial.onImprovError(onImprovWiFiErrorCb);
+  improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
+  improvSerial.setCustomConnectWiFi(connectWifi);  // Optional
+//   TreadmillSession tsession;
+//   tsession.start = 1739826223;
+//   tsession.stop = 1739831820;
+//   tsession.steps = 4856;
+//   recordSessionToEEPROM(tsession);
 }
 
 // ---------------------------------------------------------------------------
 // Main Loop
 // ---------------------------------------------------------------------------
 void loop() {
+
+  improvSerial.handleSerial();
+
   // Non-blocking NTP check
   checkNtpUpdate();
 
-  // Periodic LCD refresh
-  static unsigned long lastLcdUpdate = 0;
-  const unsigned long lcdUpdateInterval = 1000;
-  if (millis() - lastLcdUpdate >= lcdUpdateInterval) {
-    updateLcd();
-    lastLcdUpdate = millis();
-  }
+  periodicLcdUpdateMainLoopHandler();
 
   // Check button press
   if (buttonPressed) {
@@ -1006,15 +1146,6 @@ void loop() {
     clearedSessions = true;
   }
 
-  // Manage first session push if central has subscribed
-  if (isMobileAppConnected && !prevIsMobileAppConnected) {
-    prevIsMobileAppConnected = isMobileAppConnected;
-    Serial.println("Mobile app connected, waiting for CCCD subscription...");
-  } else if (!isMobileAppConnected && prevIsMobileAppConnected) {
-    prevIsMobileAppConnected = isMobileAppConnected;
-    Serial.println("Mobile app disconnected, subscribed=FALSE");
-  }
-
   if (isMobileAppConnected && isMobileAppSubscribed && !haveNotifiedMobileAppOfFirstSession) {
     haveNotifiedMobileAppOfFirstSession = true;
     currentSessionIndex = 0;
@@ -1022,22 +1153,22 @@ void loop() {
     indicateNextSession();
   }
 
-#ifdef OMNI_CONSOLE_MODE
-  // If console is not connected, try to reconnect periodically
-  if (!consoleIsConnected) {
-    static unsigned long lastTry = 0;
-    if (millis() - lastTry > 5000) { 
-      lastTry = millis();
-      connectToConsoleViaBLE(); 
-    }
-  } else {
-    // If connected, run the code that polls for data
+  #ifdef OMNI_CONSOLE_MODE
     consoleBLEMainLoop();
-  }
-#endif
+  #endif
 
   #ifdef RETRO_MODE
-  // Check if data is available on UART1
+    retroModeMainLoopHandler();
+  #endif
+
+  delay(1);
+}
+
+#ifdef RETRO_MODE
+  float getSpeedFromCommand(uint8_t*);
+
+  void retroModeMainLoopHandler() {
+      // Check if data is available on UART1
     while (uart1.available() > 0) {
       char receivedChar = uart1.read();
     // Serial.printf("1>%02X\n", receivedChar);
@@ -1061,14 +1192,7 @@ void loop() {
         processRequest();
       }
     }
-  #endif
-
-  delay(1);
-}
-
-#ifdef RETRO_MODE
-
-  float getSpeedFromCommand(uint8_t*);
+  }
 
   void processRequest() {
     if( VERBOSE_LOGGING ) {
