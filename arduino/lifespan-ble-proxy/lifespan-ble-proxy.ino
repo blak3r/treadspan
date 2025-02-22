@@ -915,8 +915,8 @@ void simulateNewSession() {
 //#include "fonts.h"
 //#include "Teko_SemiBold28pt7b.h"
 //#include "Teko_SemiBold20pt7b.h"
-//#include "AGENCYB22pt7b.h"
-#include "AGENCYB20pt7b.h"
+#include "AGENCYB22pt7b.h"
+//#include "AGENCYB20pt7b.h"
 //#include "AGENCYB18pt7b.h"
 
 volatile bool topButtonPressed = false;
@@ -1022,39 +1022,40 @@ void runningScreen() {
     // Rotation = 2, puts usbc cable on right.
     // 240 horizontal
     // 135 in Y
+    sprite.setSwapBytes(true);
     sprite.setTextDatum(TL_DATUM);
     sprite.fillScreen(TFT_BLACK);
     sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
 
     // Display Step Count (Large, Centered)
-    sprite.setTextColor(TFT_SKYBLUE, TFT_BLACK);
+    sprite.setTextColor(TFT_WHITE, TFT_BLACK);
 
-    int biggestSize=0;
-    int stepNumberMaxWidth;
-    //sprite.setFreeFont(&DSEG7_Modern_Bold_20);
-   // sprite.setFreeFont(&DSEG7_Classic_Regular_28); // HORIBLE
-    sprite.setFreeFont(&AGENCYB20pt7b);
-    // 10221
-    #define STEPS_X_PAD 0
-    #define STEPS_Y_PAD 10
-    int stepsWidth = sprite.textWidth(String(steps));
-    int stepsX = (240 - stepsWidth) / 2; // Center horizontally
-    int stepsHeight = sprite.fontHeight();
-    sprite.setCursor(stepsX,STEPS_Y_PAD);
-   // Serial.printf("Steps NUM Cur width: %d, x:%d, y:%d\n", stepsWidth, stepsX, STEPS_Y_PAD);
-    //sprite.
-    sprite.drawString(String(steps), 0,0);
+    const int topLineHeight = 20;
+    const int botLineHeight = 35;
+    const int botLineStartY = RES_Y-35;
 
-    const int lineX = (STEPS_X_PAD + stepsWidth);
-    const int lineYe = stepsHeight;
-    // Line Mode
-    sprite.drawLine( lineX, 0, lineX, lineYe, TFT_CYAN);
+    //sprite.fillRect( (RES_X/2)-2, 0, 3, topLineHeight, TFT_CYAN);
+    //sprite.pushImage(RES_X-48,0, 48,48,bluetooth48);
+    
+    sprite.setTextSize(2);
+    sprite.setFreeFont(&AGENCYB22pt7b);
 
-    // int stepsIconX = (STEPS_X_PAD + stepsWidth) + 20; 
-    // int stepsIconY = (stepsHeight - 64) / 2;
-    // sprite.pushImage(stepsIconX, stepsIconY, 64, 64, greenStep64 );
+    sprite.setTextDatum(TC_DATUM);
+    sprite.drawString(String(steps), RES_X/2, topLineHeight);
+
+    //sprite.fillRect( (RES_X/2)-2, botLineStartY, 3, botLineHeight, TFT_CYAN);
 
 
+    // sprite.setFreeFont(0);
+    // sprite.setTextColor(TFT_BLACK, TFT_MAGENTA);
+    // sprite.setTextSize(3);
+    // int sessionsStoredWidth = sprite.textWidth( String(sessionsStored) );
+    // int sessionsStoredHeight = sprite.fontHeight();
+    // int sessionsStoredX=5+(RES_X-sessionsStoredWidth);
+    // int sessionsStoredY=-1 + (RES_Y-(sessionsStoredHeight + 1));
+
+    // sprite.fillRect(sessionsStoredX-10, sessionsStoredY-2, 30, 30, 2, TFT_MAGENTA);
+    // sprite.drawString(String(sessionsStored), sessionsStoredX, sessionsStoredY);
     sprite.setFreeFont(0);
     sprite.setTextColor(TFT_DARKCYAN, TFT_BLACK);
     sprite.setTextSize(3);
@@ -1074,8 +1075,7 @@ void runningScreen() {
     int toSyncHeight = sprite.fontHeight();
     int toSyncX=sessionsStoredX - (toSyncWidth + 5);
     int toSyncY=sessionsStoredY;
-    sprite.drawString(String(toSyncText), toSyncX, toSyncY);
-
+    //sprite.drawString(String(toSyncText), toSyncX, toSyncY);
     // Displays a red dot in lower left.
     if( isTreadmillActive && recordIndicator) {
       sprite.fillCircle(10,110+5, 5, TFT_RED);
@@ -1084,6 +1084,76 @@ void runningScreen() {
 
     sprite.pushSprite(0,0);
 }
+
+// /**
+//  * Update the TFT display with step count and unsynced session count in a horizontal format.
+//  */
+// void runningScreen() {
+//     static bool recordIndicator = false;
+//     // Rotation = 2, puts usbc cable on right.
+//     // 240 horizontal
+//     // 135 in Y
+//     sprite.setTextDatum(TL_DATUM);
+//     sprite.fillScreen(TFT_BLACK);
+//     sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
+
+//     // Display Step Count (Large, Centered)
+//     sprite.setTextColor(TFT_SKYBLUE, TFT_BLACK);
+
+//     int biggestSize=0;
+//     int stepNumberMaxWidth;
+//     //sprite.setFreeFont(&DSEG7_Modern_Bold_20);
+//    // sprite.setFreeFont(&DSEG7_Classic_Regular_28); // HORIBLE
+//     sprite.setFreeFont(&AGENCYB20pt7b);
+//     // 10221
+//     #define STEPS_X_PAD 0
+//     #define STEPS_Y_PAD 10
+//     int stepsWidth = sprite.textWidth(String(steps));
+//     int stepsX = (240 - stepsWidth) / 2; // Center horizontally
+//     int stepsHeight = sprite.fontHeight();
+//     sprite.setCursor(stepsX,STEPS_Y_PAD);
+//    // Serial.printf("Steps NUM Cur width: %d, x:%d, y:%d\n", stepsWidth, stepsX, STEPS_Y_PAD);
+//     //sprite.
+//     sprite.drawString(String(steps), 0,0);
+
+//     const int lineX = (STEPS_X_PAD + stepsWidth);
+//     const int lineYe = stepsHeight;
+//     sprite.fillRect(lineX + 20, 0, 3, lineYe - 20, TFT_CYAN);
+
+//     // int stepsIconX = (STEPS_X_PAD + stepsWidth) + 20; 
+//     // int stepsIconY = (stepsHeight - 64) / 2;
+//     // sprite.pushImage(stepsIconX, stepsIconY, 64, 64, greenStep64 );
+
+
+//     sprite.setFreeFont(0);
+//     sprite.setTextColor(TFT_DARKCYAN, TFT_BLACK);
+//     sprite.setTextSize(3);
+//     int sessionsStoredWidth = sprite.textWidth( String(sessionsStored) );
+//     int sessionsStoredHeight = sprite.fontHeight();
+//     int sessionsStoredX=240-(5+sessionsStoredWidth);
+//     int sessionsStoredY=RES_Y-(sessionsStoredHeight + 5);
+//     sprite.drawString(String(sessionsStored), sessionsStoredX, sessionsStoredY);
+
+
+//     // Display unsynced sessions in the bottom-right
+//     sprite.setFreeFont(0);
+//     sprite.setTextSize(2);
+//     sprite.setTextColor(TFT_MAGENTA, TFT_BLACK);
+//     const char* toSyncText = "To Sync:";
+//     int toSyncWidth = sprite.textWidth( toSyncText );
+//     int toSyncHeight = sprite.fontHeight();
+//     int toSyncX=sessionsStoredX - (toSyncWidth + 5);
+//     int toSyncY=sessionsStoredY;
+//     sprite.drawString(String(toSyncText), toSyncX, toSyncY);
+
+//     // Displays a red dot in lower left.
+//     if( isTreadmillActive && recordIndicator) {
+//       sprite.fillCircle(10,110+5, 5, TFT_RED);
+//     }
+//     recordIndicator = !recordIndicator;
+
+//     sprite.pushSprite(0,0);
+// }
 
 
 void updateTFTDisplay() {
