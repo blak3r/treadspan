@@ -129,6 +129,11 @@ control it through the mobile app (you would also need the more complicated hard
 HIGH
 - Create a means to configure the WiFi (with a bluetooth)
 - Make BLE code very robust.
+- Make BLE session end detection more robust, had issues where it thought it was "unknown";
+- Finish UI
+- Add means of detecting if EEPROM is initialized.
+- Connecting to wifi on TFT.
+- Splash screen for TREADSPAN
 
 MED
 - Change the bundle id?

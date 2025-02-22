@@ -15,37 +15,55 @@
 #include <sys/time.h>
 #include <time.h>
 #include <Wire.h>
-#include <ImprovWiFiLibrary.h>
 
-#include <HardwareSerial.h>
 
-#define LCD_ENABLED 1
+//#define LCD_ENABLED 1
+#define HAS_TFT_DISPLAY 1
 //#define RETRO_MODE 1        // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
 #define OMNI_CONSOLE_MODE 1   // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA BLE (requires OMNI CONSOLE)
 #define VERBOSE_LOGGING 0
-#define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1 // 1 should be the default, if 1 it must of been flashed via the WEBINSTALLER, 
+#define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1 // 1 should be the default, if 1 it must of been flashed via the WEBINSTALLER,
+//#define SESSION_SIMULATION_BUTTONS_ENABLED 1
+//#define INCLUDE_IMPROV_SERIAL 1
 
+#if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
 
-#if LOAD_WIFI_CREDENTIALS_FROM_EEPROM 
+#define FW_VERSION "v0.9.2"
 
 #else
   const char* ssid = "Angela";
   const char* password = "iloveblake"; // Example guest network password for demonstration
-#endif 
+#endif
 
 // DEPENDENT LIBARIES
-#if LCD_ENABLED 
+#if LCD_ENABLED
   #include <LiquidCrystal_I2C.h>
   LiquidCrystal_I2C lcd(0x27,20,4);
 #endif
 
+#if INCLUDE_IMPROV_SERIAL
+  #include <ImprovWiFiLibrary.h>
+  ImprovWiFi improvSerial(&Serial);
+#endif
+
+#ifdef HAS_TFT_DISPLAY
+  #include <SPI.h>
+  #include <TFT_eSPI.h>
+  TFT_eSPI tft = TFT_eSPI();
+  TFT_eSprite sprite = TFT_eSprite (&tft);
+
+  #define TOP_BUTTON 35
+  #define BOT_BUTTON 0
+#endif
+
 #if !defined(RETRO_MODE) && !defined(OMNI_CONSOLE_MODE)
   #error "At least one must be defined: RETRO_MODE or OMNI_CONSOLE_MODE"
-#endif 
+#endif
 
-// ARDUINO NANO PINOUT
-#define BUTTON_PIN 2 // D2
-#define CLEAR_PIN  3 // D3  - Clears all sessions in EEPROM
+#ifdef SESSION_SIMULATION_BUTTONS_ENABLED
+  #define BUTTON_PIN 2 // D2
+  #define CLEAR_PIN  3 // D3  - Clears all sessions in EEPROM
+#endif
 
 // EEPROM Configuration
 #define EEPROM_SIZE             512
@@ -57,7 +75,10 @@
 #define SESSION_SIZE_BYTES      12
 
 #ifdef RETRO_MODE
+  #include <HardwareSerial.h>
+
   // RETRO VERSION UART CONFIGURATION
+  // TODO REDEFINE FOR LILY TFT
   #define RX1PIN 20  // A0, GPIO1, D17
   #define TX1PIN 6   // NOT ACTUALLY NEEDED!
   #define RX2PIN 23  // A2, GPIO3, D19
@@ -121,7 +142,7 @@ String lastRecordedDate = "";
 unsigned long totalStepsToday = 0;
 
 TreadmillSession currentSession;
-ImprovWiFi improvSerial(&Serial);
+
 
 // Function to estimate speed in MPH based on integer value (common between retro and omni ble protocol)
 // TODO figure out how to do kph... but technically i'm only using this to display to a debug lcd so probably wouldn't bother.
@@ -142,11 +163,11 @@ float estimate_mph(int value) {
   NimBLEClient* consoleClient = nullptr;
   NimBLERemoteCharacteristic* consoleNotifyCharacteristic = nullptr;
   NimBLERemoteCharacteristic* consoleWriteCharacteristic  = nullptr;
-  
+
   bool consoleIsConnected = false;
-  int consoleCommandIndex = 0; 
+  int consoleCommandIndex = 0;
   static unsigned long lastConsoleCommandSentAt = 0;  // last time we requested a command
-  const unsigned long consoleCommandUpdateInterval = 500; 
+  const unsigned long consoleCommandUpdateInterval = 500;
   volatile int lastConsoleCommandIndex = 0;
 
   // We'll cycle through these commands
@@ -171,7 +192,7 @@ float estimate_mph(int value) {
   int hexStringToByteArray(const char *hexString, uint8_t *byteArray, int maxSize) {
     int len = strlen(hexString);
     if (len % 2 != 0) {
-        Serial.println("Invalid hex string length.");
+       // Serial.println("Invalid hex string length.");
         return -1;  // Invalid length
     }
 
@@ -192,7 +213,7 @@ float estimate_mph(int value) {
   // -----------------------------------------------------------------------
   // BLE Scan -> Look for "LifeSpan-TM"
   // -----------------------------------------------------------------------
-  static NimBLEAddress foundConsoleAddress;// = NimBLEAddress("");//nullptr; //TODO 
+  static NimBLEAddress foundConsoleAddress;// = NimBLEAddress("");//nullptr; //TODO
   static bool foundConsole = false;
 
   /** Define a class to handle the callbacks when scan events are received */
@@ -220,7 +241,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
 
   // Callback to handle incoming notifications from the console
-  void consoleNotifyCallback(NimBLERemoteCharacteristic* pCharacteristic, 
+  void consoleNotifyCallback(NimBLERemoteCharacteristic* pCharacteristic,
                            uint8_t* data, size_t length, bool isNotify) {
     #if VERBOSE_LOGGING
       Serial.printf("RESP %02X: ", lastConsoleCommandIndex );
@@ -237,16 +258,16 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     }
     else if( lastConsoleCommandIndex == CONSOLE_CALORIES_INDEX ) {
       calories = data[2]*256 + data[3];
-      Serial.printf("Calories: %d\n", calories);
+      //Serial.printf("Calories: %d\n", calories);
     }
     else if( lastConsoleCommandIndex == CONSOLE_DISTANCE_INDEX ) {
       distance = data[2]*256 + data[3];
-      Serial.printf("Distance: %d\n", distance);
+      //Serial.printf("Distance: %d\n", distance);
     }
     else if( lastConsoleCommandIndex == CONSOLE_SPEED_INDEX ) {
       avgSpeedInt = data[2]*256 + data[3];
       avgSpeedFloat = estimate_mph(avgSpeedInt);
-      Serial.printf("AvgSpeedInt: %d, %.1f MPH\n", avgSpeedInt, avgSpeedFloat);
+      //Serial.printf("AvgSpeedInt: %d, %.1f MPH\n", avgSpeedInt, avgSpeedFloat);
     }
     else if( lastConsoleCommandIndex == CONSOLE_SESSION_STATUS_INDEX ) {
       uint8_t status = data[2];
@@ -257,27 +278,27 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
       Serial.print("Treadmill Status: ");
       switch(status) {
-        case STATUS_RUNNING: 
+        case STATUS_RUNNING:
           Serial.print("RUNNING");
           if( !isTreadmillActive ) sessionStartedDetected();
           isTreadmillActive = true;
           break;
-        case STATUS_PAUSED: 
+        case STATUS_PAUSED:
           Serial.print("PAUSED");
           if( isTreadmillActive ) sessionEndedDetected();
           isTreadmillActive = false;
           break;
-        case STATUS_SUMMARY_SCREEN: 
+        case STATUS_SUMMARY_SCREEN:
           Serial.print("SUMMARY_SCREEN");
           if( isTreadmillActive ) sessionEndedDetected();
           isTreadmillActive = false;
           break;
-        case STATUS_STANDBY: 
+        case STATUS_STANDBY:
           Serial.print("STANDBY");
           if( isTreadmillActive ) sessionEndedDetected();
           isTreadmillActive = false;
           break;
-        default: 
+        default:
           Serial.printf("UNKNOWN: '%d'", status);
       }
       Serial.print("\n");
@@ -305,7 +326,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     Serial.printf("Attempting to connect to: %s\n", foundConsoleAddress.toString().c_str());
 
     if (!consoleClient->connect(foundConsoleAddress)) {
-      Serial.println("Failed to connect to LifeSpan console device.");
+      Serial.println("Failed to connect to LifeSpan console.");
       consoleIsConnected = false;
       return;
     }
@@ -339,7 +360,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     // FFF2: Write characteristic
     consoleWriteCharacteristic = service->getCharacteristic(CONSOLE_CHARACTERISTIC_UUID_FFF2);
     if (!consoleWriteCharacteristic || !consoleWriteCharacteristic->canWrite()) {
-      Serial.println("FFF2 characteristic not found or not writable.");
+      Serial.println("FFF2 characteristic not found");
       consoleClient->disconnect();
       consoleIsConnected = false;
       return;
@@ -348,7 +369,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
    // Public function to scan for "LifeSpan-TM" device & connect
   void connectToConsoleViaBLE() {
-    Serial.println("Scanning for LifeSpan Treadmill console...");
+    Serial.println("Scanning for LifeSpan Omni Console...");
 
     // Reset flags
     foundConsole = false;
@@ -358,7 +379,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     pBLEScan->setScanCallbacks(&scanCallbacks, false);
     pBLEScan->setActiveScan(true);
     pBLEScan->start(3, false); // Scan for 1 second
-    
+
     // NimBLE requires a small delay after scanning
     delay(50);
 
@@ -377,15 +398,15 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     // If console is not connected, try to reconnect periodically
     if (!consoleIsConnected) {
       static unsigned long lastTry = 0;
-      if (millis() - lastTry > 5000) { 
+      if (millis() - lastTry > 5000) {
         lastTry = millis();
-        connectToConsoleViaBLE(); 
+        connectToConsoleViaBLE();
       }
     } else {
       // If enough time has passed, send the next read request
       if ( (millis() - lastConsoleCommandSentAt >= consoleCommandUpdateInterval) ) {
         lastConsoleCommandSentAt = millis(); // Reset timer
-        
+
         int size = hexStringToByteArray(hexStrings[consoleCommandIndex], byteArray, sizeof(byteArray));
         if (size > 0) {
           #if VERBOSE_LOGGING
@@ -396,7 +417,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
             Serial.print("\n");
           #endif
 
-          consoleWriteCharacteristic->writeValue((uint8_t*)byteArray, size); 
+          consoleWriteCharacteristic->writeValue((uint8_t*)byteArray, size);
           lastConsoleCommandIndex = consoleCommandIndex;
 
           consoleCommandIndex = (consoleCommandIndex + 1) % consoleCommandCount;
@@ -436,13 +457,13 @@ void loadWiFiCredentialsFromEEPROM(char* ssid, char* password) {
         if (ssid[i] == '\0') break;
     }
     ssid[MAX_SSID_LENGTH - 1] = '\0';
-    
+
     for (int i = 0; i < MAX_SSID_LENGTH; i++) {
         password[i] = EEPROM.read(PASSWORDS_INDEX + i);
         if (password[i] == '\0') break;
     }
     password[MAX_SSID_LENGTH - 1] = '\0';
-    
+
     Serial.print("Loaded SSID: ");
     Serial.println(ssid);
     Serial.print("Loaded Password: ");
@@ -453,9 +474,9 @@ void getWifiCredentialsAndCallWifiBegin() {
   #if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
     char ssid[32], password[32];
     loadWiFiCredentialsFromEEPROM(ssid, password);
-  #else 
+  #else
     //Serial.println("Using SSID from Program Memory named: %s", ssid);
-  #endif  
+  #endif
 
   WiFi.begin(ssid, password);
 }
@@ -467,14 +488,13 @@ void connectToWiFi() {
   #endif
 
   Serial.print("Connecting to WiFi...");
-  
+
   getWifiCredentialsAndCallWifiBegin(); // loads from SSID/PASS from file system or program memory depending on build configs.
 
   while (WiFi.status() != WL_CONNECTED) {
       delay(1000);
       Serial.print(".");
       toggleLedColor(RED_LED);
-      improvSerial.handleSerial();
   }
   Serial.println("\nConnected to WiFi!");
   #if LCD_ENABLED
@@ -497,7 +517,7 @@ unsigned long ntpUpdateInterval = 3000; // eventually 600000 (10 mins), but star
 
 void sendNtpRequest() {
   Serial.println("Sending NTP request...");
-  
+
   memset(ntpPacketBuffer, 0, NTP_PACKET_SIZE);
   ntpPacketBuffer[0] = 0b11100011;  // LI, Version, Mode
   ntpPacketBuffer[1] = 0;  // Stratum
@@ -564,10 +584,11 @@ String getFormattedTime() {
 //  - [64..67]   : uint32_t sessionCount
 //  - [68..end] : session data in blocks of 12 bytes each
 //
-// Each session block: 
+// Each session block:
 //    Byte 0..3  : start time (Big-endian)
 //    Byte 4..7  : stop time  (Big-endian)
 //    Byte 8..11 : steps      (Big-endian)
+
 
 
 uint32_t getSessionCountFromEEPROM() {
@@ -576,6 +597,12 @@ uint32_t getSessionCountFromEEPROM() {
   count |= (EEPROM.read(SESSIONS_START_INDEX + 1) << 16);
   count |= (EEPROM.read(SESSIONS_START_INDEX + 2) << 8);
   count |= EEPROM.read(SESSIONS_START_INDEX + 3);
+
+  if( count >= MAX_SESSIONS ) {
+    count = 0;
+    Serial.println("DETECTED UNINITED EEPROM");
+  }
+
   sessionsStored = count;
   return count;
 }
@@ -688,48 +715,50 @@ void recordSessionToEEPROM( TreadmillSession session ) {
 }
 
 
-void onImprovWiFiErrorCb(ImprovTypes::Error err) {
-  Serial.println("onImprovWifiErrorCb");
-  Serial.println(err);
-}
-
 void saveWiFiCredentials(const char* ssid, const char* password) {
   if (strlen(ssid) > 32 || strlen(password) > 32) {
-      Serial.println("Error: SSID or password too long");
+      Serial.println("Error: SSID/Pass too long");
       return;
   }
-  
+
   // Write SSID to EEPROM
   for (int i = 0; i < MAX_SSID_LENGTH; i++) {
       EEPROM.write(SSID_INDEX + i, (i < strlen(ssid)) ? ssid[i] : '\0');
   }
-  
+
   // Write Password to EEPROM
   for (int i = 0; i < MAX_SSID_LENGTH; i++) {
       EEPROM.write(PASSWORDS_INDEX + i, (i < strlen(password)) ? password[i] : '\0');
   }
-  
+
   EEPROM.commit(); // Ensure data is written (needed for ESP8266/ESP32)
-  Serial.println("WiFi credentials saved to EEPROM");
+  Serial.println("WiFi creds saved to EEPROM");
 }
 
-void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
-  Serial.println("IS: onImprovWiFiConnectedCb");
-  saveWiFiCredentials(ssid, password);
-}
-
-bool connectWifi(const char *ssid, const char *password) {
-  Serial.println("IS: connectWifi");
-  WiFi.begin(ssid, password);
-
-  while (!improvSerial.isConnected())
-  {
-    //blink_led(500, 1);
-    //toggleLedColor(LED_RED);
+#ifdef INCLUDE_IMPROV_SERIAL
+  void onImprovWiFiErrorCb(ImprovTypes::Error err) {
+    Serial.println("onImprovWifiErrorCb");
+    Serial.println(err);
   }
 
-  return true;
-}
+  void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
+    Serial.println("IS: onImprovWiFiConnectedCb");
+    saveWiFiCredentials(ssid, password);
+  }
+
+  bool connectWifi(const char *ssid, const char *password) {
+    Serial.println("IS: connectWifi");
+    WiFi.begin(ssid, password);
+
+    while (!improvSerial.isConnected())
+    {
+      //blink_led(500, 1);
+      //toggleLedColor(LED_RED);
+    }
+
+    return true;
+  }
+#endif
 
 // ---------------------------------------------------------------------------
 // Today's steps
@@ -737,7 +766,7 @@ bool connectWifi(const char *ssid, const char *password) {
 String getFormattedDate() {
   time_t now = time(nullptr);
   if (now < 100000) {
-    return "NTP sync";
+    return "NTP";
   }
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
@@ -770,11 +799,11 @@ void sessionEndedDetected() {
   currentSession.steps = steps;
 
   if (currentSession.steps > 50000) {
-    Serial.println("ERROR: Session steps too large, skipping save.");
+   // Serial.println("ERROR: Session steps too large, skipping save.");
     return;
   }
   if (!currentSession.start) {
-    Serial.println("ERROR: Session had no start time, skipping save.");
+   // Serial.println("ERROR: Session had no start time, skipping save.");
     return;
   }
 
@@ -805,78 +834,284 @@ void simulateNewSession() {
 // LCD
 // ---------------------------------------------------------------------------
 #if LCD_ENABLED
-String getCurrentSessionElapsed() {
-  time_t now = time(nullptr);
-  if (currentSession.start == 0 || now < currentSession.start) {
-    return "00:00:00";
+  String getCurrentSessionElapsed() {
+    time_t now = time(nullptr);
+    if (currentSession.start == 0 || now < currentSession.start) {
+      return "00:00:00";
+    }
+    uint32_t elapsed = now - currentSession.start;
+    uint32_t hours   = elapsed / 3600;
+    uint32_t minutes = (elapsed % 3600) / 60;
+    uint32_t seconds = elapsed % 60;
+
+    char buffer[9];
+    snprintf(buffer, sizeof(buffer), "%02u:%02u:%02u", hours, minutes, seconds);
+    return String(buffer).c_str();
   }
-  uint32_t elapsed = now - currentSession.start;
-  uint32_t hours   = elapsed / 3600;
-  uint32_t minutes = (elapsed % 3600) / 60;
-  uint32_t seconds = elapsed % 60;
 
-  char buffer[9];
-  snprintf(buffer, sizeof(buffer), "%02u:%02u:%02u", hours, minutes, seconds);
-  return String(buffer).c_str();
-}
-
-void lcdPrintBoolIndicator(boolean pValue ) {
-  if( pValue ) {
-    lcd.print("+");
-  } else {
-    lcd.print("-");
+  void lcdPrintBoolIndicator(boolean pValue ) {
+    if( pValue ) {
+      lcd.print("+");
+    } else {
+      lcd.print("-");
+    }
   }
-}
 
-void updateLcd() {
-  static uint pageStyle = 0;
+  void updateLcd() {
+    static uint pageStyle = 0;
 
-  #if OMNI_CONSOLE_MODE
-  if( pageStyle == 0 ) {
-    Serial.printf("Clearing LCD, consoleIsConn: %d, isMobileAppConn: %d, isMobileSubs:%\n", consoleIsConnected, isMobileAppConnected, isMobileAppSubscribed);
-    lcd.clear(); // Causes additional blocking i didn't want in the Serial mode.
+    #if OMNI_CONSOLE_MODE
+    if( pageStyle == 0 ) {
+      Serial.printf("Clearing LCD, consIsConn: %d, isMobAppConn: %d, isMobSubs:%\n", consoleIsConnected, isMobileAppConnected, isMobileAppSubscribed);
+      lcd.clear(); // Causes additional blocking i didn't want in the Serial mode.
+    }
+    #endif
+
+    lcd.setCursor(0,0);
+    lcd.printf("TreadSpan %s ", FW_VERSION);
+    lcdPrintBoolIndicator(consoleIsConnected);
+    lcdPrintBoolIndicator(isMobileAppConnected);
+    lcdPrintBoolIndicator(isMobileAppSubscribed);
+
+    lcd.setCursor(0,1);
+    if (pageStyle < 2) {
+      lcd.printf("Steps Today: %7lu", getTodaysSteps());
+    } else {
+      lcd.printf("Sessions To Sync: %2d", sessionsStored);
+    }
+    pageStyle = (pageStyle + 1) % 4;
+
+    if (isTreadmillActive) {
+      lcd.setCursor(0,2);
+      lcd.printf("%s %s   ", getFormattedTime().c_str(), getCurrentSessionElapsed().c_str());
+      lcd.setCursor(0,3);
+      lcd.printf("Steps:%4d MPH: %.1f", steps, speedFloat);
+    } else {
+      lcd.setCursor(0,2);
+      lcd.print("Save Sessions On App");
+      lcd.setCursor(0,3);
+      lcd.print(" OR Start Walking!  ");
+    }
   }
-  #endif
 
-  lcd.setCursor(0,0);
-  lcd.print("TreadSpan v0.9.2 ");
-  lcdPrintBoolIndicator(consoleIsConnected);
-  lcdPrintBoolIndicator(isMobileAppConnected);
-  lcdPrintBoolIndicator(isMobileAppSubscribed);
-  
-  lcd.setCursor(0,1);
-  if (pageStyle < 2) {
-    lcd.printf("Steps Today: %7lu", getTodaysSteps());
-  } else {
-    lcd.printf("Sessions To Sync: %2d", sessionsStored);
+  void periodicLcdUpdateMainLoopHandler() {
+    // Periodic LCD refresh
+    static unsigned long lastLcdUpdate = 0;
+    const unsigned long lcdUpdateInterval = 1000;
+    if (millis() - lastLcdUpdate >= lcdUpdateInterval) {
+      updateLcd();
+      lastLcdUpdate = millis();
+    }
   }
-  pageStyle = (pageStyle + 1) % 4; 
-
-  if (isTreadmillActive) {
-    lcd.setCursor(0,2);
-    lcd.printf("%s %s   ", getFormattedTime().c_str(), getCurrentSessionElapsed().c_str());
-    lcd.setCursor(0,3);
-    lcd.printf("Steps:%4d MPH: %.1f", steps, speedFloat);
-  } else {
-    lcd.setCursor(0,2);
-    lcd.print("Save Sessions On App");
-    lcd.setCursor(0,3);
-    lcd.print(" OR Start Walking!  ");
-  }
-}
-
-void periodicLcdUpdateMainLoopHandler() {
-  // Periodic LCD refresh
-  static unsigned long lastLcdUpdate = 0;
-  const unsigned long lcdUpdateInterval = 1000;
-  if (millis() - lastLcdUpdate >= lcdUpdateInterval) {
-    updateLcd();
-    lastLcdUpdate = millis();
-  }
-}
-
-
 #endif
+
+
+#ifdef HAS_TFT_DISPLAY
+
+#define RES_Y 135
+#define RES_X 240
+
+#include "icons.h"
+//#include "fonts.h"
+//#include "Teko_SemiBold28pt7b.h"
+//#include "Teko_SemiBold20pt7b.h"
+//#include "AGENCYB22pt7b.h"
+#include "AGENCYB20pt7b.h"
+//#include "AGENCYB18pt7b.h"
+
+volatile bool topButtonPressed = false;
+volatile uint8_t tftPage = 0;
+volatile unsigned long lastDebounceTimeTop = 0;  // Track last button press time
+const unsigned long debounceDelay = 200;      // Debounce time in milliseconds
+void IRAM_ATTR handleTopButtonInterrupt() {
+    unsigned long currentTime = millis();  // Get current time
+    if (currentTime - lastDebounceTimeTop > debounceDelay) {  // Check if enough time has passed
+      topButtonPressed = true;
+      tftPage += 1;
+      lastDebounceTimeTop = currentTime;  // Update debounce timer
+    }
+}
+
+volatile bool botButtonPressed = false;
+// volatile unsigned long lastDebounceTimeBot = 0;  // Track last button press time
+void IRAM_ATTR handleBotButtonInterrupt() {
+    // unsigned long currentTime = millis();  // Get current time
+    // if (currentTime - lastDebounceTimeBot > debounceDelay) {  // Check if enough time has passed
+    //     botButtonPressed = true;
+    //     lastDebounceTimeBot = currentTime;  // Update debounce timer
+    // }
+}
+
+void setupTFTDisplay() {
+  #ifdef HAS_TFT_DISPLAY
+    tft.init();
+    delay(25);
+    tft.setRotation(1); // 2-portrait, usb up, 0-portrait (opposite)
+    tft.fillScreen(TFT_BLACK);
+    tft.setSwapBytes(true);
+    sprite.createSprite(RES_X,RES_Y);
+
+    pinMode(TOP_BUTTON, INPUT_PULLUP);
+    pinMode(BOT_BUTTON, INPUT_PULLUP);
+
+    // Setup button interrupt
+    attachInterrupt(digitalPinToInterrupt(TOP_BUTTON), handleTopButtonInterrupt, FALLING);
+    attachInterrupt(digitalPinToInterrupt(BOT_BUTTON), handleBotButtonInterrupt, FALLING);
+
+    updateTFTDisplay(); // Initial display update
+  #endif
+}
+
+void splashScreen() {
+  sprite.setSwapBytes(true);
+  sprite.setTextDatum(TL_DATUM);
+  sprite.fillScreen(TFT_BLACK);
+  sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
+  // 19 was centered
+  sprite.pushImage(0,9, 96, 96, treadspan96);
+
+  sprite.setTextDatum( MC_DATUM );
+  sprite.setTextSize(2);
+  sprite.setTextColor(TFT_GOLD, TFT_BLACK);
+  const int centerTextX = 96+((RES_X-(96))/2);
+  const int size2Height = sprite.fontHeight();
+  const int textLine1Y = 15;
+  sprite.drawString("TREADSPAN", centerTextX, textLine1Y + 0*size2Height + 10 );
+  sprite.setFreeFont(0);
+  sprite.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  sprite.drawString("by", centerTextX, textLine1Y + 1*size2Height + 10  );
+  sprite.setFreeFont(0);
+  sprite.setTextColor(TFT_SILVER, TFT_BLACK);
+  sprite.drawString("Blake", centerTextX, textLine1Y + 2*size2Height + 10 );
+  sprite.drawString("Robertson", centerTextX, textLine1Y + 3*size2Height + 10 );
+  sprite.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  sprite.drawString(FW_VERSION, centerTextX, textLine1Y + 4*size2Height + 10 );
+  sprite.setTextSize(1);
+  sprite.setTextDatum(TL_DATUM);
+  sprite.setTextColor(TFT_WHITE, TFT_BLACK);
+  sprite.drawString("https://github.com/blak3r/treadspan", 0, (RES_Y-sprite.fontHeight())-2);
+  
+  sprite.setTextDatum(TL_DATUM);
+  sprite.pushSprite(0,0);
+}
+
+void noWifiScreen() {
+  sprite.setSwapBytes(true);
+  sprite.setTextDatum(TL_DATUM);
+  sprite.fillScreen(TFT_BLACK);
+  sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
+  sprite.pushImage((RES_X-101)/2,0, 101,96, no_wifi_solid_101x96);
+  sprite.setTextSize(2);
+  sprite.setTextColor(TFT_WHITE, TFT_BLACK);
+  const char* wifi1 = "Configure WiFi\n";
+  const char* wifi2 = "In Treadspan App";
+  int wifi1Width = sprite.textWidth(wifi1);
+  int wifi2Width = sprite.textWidth(wifi2);
+  sprite.setCursor( (RES_X-wifi1Width)/2 ,100);
+  sprite.print(wifi1);
+  sprite.setCursor( (RES_X-wifi2Width)/2 ,100+sprite.fontHeight());
+  sprite.print(wifi2);
+  sprite.pushSprite(0,0);
+}
+
+/**
+ * Update the TFT display with step count and unsynced session count in a horizontal format.
+ */
+void runningScreen() {
+    static bool recordIndicator = false;
+    // Rotation = 2, puts usbc cable on right.
+    // 240 horizontal
+    // 135 in Y
+    sprite.setTextDatum(TL_DATUM);
+    sprite.fillScreen(TFT_BLACK);
+    sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
+
+    // Display Step Count (Large, Centered)
+    sprite.setTextColor(TFT_SKYBLUE, TFT_BLACK);
+
+    int biggestSize=0;
+    int stepNumberMaxWidth;
+    //sprite.setFreeFont(&DSEG7_Modern_Bold_20);
+   // sprite.setFreeFont(&DSEG7_Classic_Regular_28); // HORIBLE
+    sprite.setFreeFont(&AGENCYB20pt7b);
+    // 10221
+    #define STEPS_X_PAD 0
+    #define STEPS_Y_PAD 10
+    int stepsWidth = sprite.textWidth(String(steps));
+    int stepsX = (240 - stepsWidth) / 2; // Center horizontally
+    int stepsHeight = sprite.fontHeight();
+    sprite.setCursor(stepsX,STEPS_Y_PAD);
+   // Serial.printf("Steps NUM Cur width: %d, x:%d, y:%d\n", stepsWidth, stepsX, STEPS_Y_PAD);
+    //sprite.
+    sprite.drawString(String(steps), 0,0);
+
+    const int lineX = (STEPS_X_PAD + stepsWidth);
+    const int lineYe = stepsHeight;
+    // Line Mode
+    sprite.drawLine( lineX, 0, lineX, lineYe, TFT_CYAN);
+
+    // int stepsIconX = (STEPS_X_PAD + stepsWidth) + 20; 
+    // int stepsIconY = (stepsHeight - 64) / 2;
+    // sprite.pushImage(stepsIconX, stepsIconY, 64, 64, greenStep64 );
+
+
+    sprite.setFreeFont(0);
+    sprite.setTextColor(TFT_DARKCYAN, TFT_BLACK);
+    sprite.setTextSize(3);
+    int sessionsStoredWidth = sprite.textWidth( String(sessionsStored) );
+    int sessionsStoredHeight = sprite.fontHeight();
+    int sessionsStoredX=240-(5+sessionsStoredWidth);
+    int sessionsStoredY=RES_Y-(sessionsStoredHeight + 5);
+    sprite.drawString(String(sessionsStored), sessionsStoredX, sessionsStoredY);
+
+
+    // Display unsynced sessions in the bottom-right
+    sprite.setFreeFont(0);
+    sprite.setTextSize(2);
+    sprite.setTextColor(TFT_MAGENTA, TFT_BLACK);
+    const char* toSyncText = "To Sync:";
+    int toSyncWidth = sprite.textWidth( toSyncText );
+    int toSyncHeight = sprite.fontHeight();
+    int toSyncX=sessionsStoredX - (toSyncWidth + 5);
+    int toSyncY=sessionsStoredY;
+    sprite.drawString(String(toSyncText), toSyncX, toSyncY);
+
+    // Displays a red dot in lower left.
+    if( isTreadmillActive && recordIndicator) {
+      sprite.fillCircle(10,110+5, 5, TFT_RED);
+    }
+    recordIndicator = !recordIndicator;
+
+    sprite.pushSprite(0,0);
+}
+
+
+void updateTFTDisplay() {
+  uint8_t choice = tftPage % 3;
+
+//  Serial.printf("choice = %d, but: %d, bot: %d\n", choice, digitalRead(TOP_BUTTON), digitalRead(BOT_BUTTON) );
+
+  switch(choice) {
+    case 0: runningScreen(); break;
+    case 1: splashScreen(); break;
+    case 2: noWifiScreen(); break;
+    default:
+      splashScreen();
+  }
+}
+
+
+void periodicTftUpdateMainLoopHandler() {
+    static unsigned long lastTftUpdate = 0;
+    const unsigned long tftUpdateInterval = 1000; // 1 second
+
+    if (millis() - lastTftUpdate >= tftUpdateInterval) {
+        updateTFTDisplay();
+        lastTftUpdate = millis();
+    }
+}
+#endif
+
 
 // ---------------------------------------------------------------------------
 // BLE Server Callbacks
@@ -891,17 +1126,16 @@ class MyServerCallbacks : public NimBLEServerCallbacks {
     isMobileAppConnected = true;
     haveNotifiedMobileAppOfFirstSession = false;
     Serial.println(">> Mobile app connected!");
-    updateLcd();
   }
 
   void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
     isMobileAppConnected = false;
     isMobileAppSubscribed = false;
     haveNotifiedMobileAppOfFirstSession = false;
-    Serial.println(">> Mobile app disconnected.");
+    Serial.println(F(">> Mobile app disconnected."));
     delay(500);
     pServer->startAdvertising();
-    Serial.println(">> Advertising restarted...");
+    Serial.println(F(">> Advertising restarted..."));
   }
 };
 
@@ -913,27 +1147,27 @@ class DataCharacteristicCallbacks: public NimBLECharacteristicCallbacks {
             Serial.println(" << Mobile app unsubscribed");
         } else {
             isMobileAppSubscribed = true;
-            Serial.printf("  >> Mobile app SUBSCRIBED to notifications! subValue=%d\n", subValue);
+            Serial.printf("  >> Mobile app SUBSCRIBED, %d\n", subValue);
         }
     }
-    
+
     void onRead(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
-        Serial.printf("%s : onRead(), value: %s\n",
-               pCharacteristic->getUUID().toString().c_str(),
-               pCharacteristic->getValue().c_str());
+        // Serial.printf("%s : onRead(), value: %s\n",
+        //        pCharacteristic->getUUID().toString().c_str(),
+        //        pCharacteristic->getValue().c_str());
     }
 
     void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
-        Serial.printf("%s : onWrite(), value: %s\n",
-               pCharacteristic->getUUID().toString().c_str(),
-               pCharacteristic->getValue().c_str());
+        // Serial.printf("%s : onWrite(), value: %s\n",
+        //        pCharacteristic->getUUID().toString().c_str(),
+        //        pCharacteristic->getValue().c_str());
     }
 
     /**
      *  The value returned in code is the NimBLE host return code.
      */
     void onStatus(NimBLECharacteristic* pCharacteristic, int code) override {
-        Serial.printf("Notification/Indication onStatus(), return code: %d, %s\n", code, NimBLEUtils::returnCodeToString(code));
+        Serial.printf("Notifi/Indi onStatus(), retc: %d, %s\n", code, NimBLEUtils::returnCodeToString(code));
     }
 };
 
@@ -968,7 +1202,6 @@ class ConfirmCallback : public NimBLECharacteristicCallbacks {
 void indicateNextSession() {
   uint32_t totalSessions = getSessionCountFromEEPROM();
   if (currentSessionIndex >= (int)totalSessions) {
-    Serial.println("All sessions indicated. Clearing sessions...");
     setSessionCountInEEPROM(0);
     EEPROM.commit();
     currentSessionIndex = 0;
@@ -978,7 +1211,7 @@ void indicateNextSession() {
     uint8_t donePayload[1] = {0xFF};
     dataCharacteristic->setValue(donePayload, 1);
     dataCharacteristic->notify();
-    Serial.println("All sessions indicated, sent done marker.");
+    Serial.println("All sessions indicated, cleared/set done marker.");
     return;
   }
 
@@ -1022,6 +1255,10 @@ void setup() {
     lcd.backlight();
   #endif
 
+  #ifdef HAS_TFT_DISPLAY
+    setupTFTDisplay();
+  #endif
+
   // Retro or Omni
 #ifdef RETRO_MODE
   Serial.println("RETRO Serial Enabled");
@@ -1033,12 +1270,9 @@ void setup() {
   EEPROM.begin(EEPROM_SIZE);
   printAllSessionsInEEPROM();
 
-  // const char* ssid = "Angela";
-  // const char* password = "iloveblake"; 
-  // saveWiFiCredentials(ssid, password);
-
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-  pinMode(CLEAR_PIN, INPUT_PULLUP);
+  //const char* ssid = "Angela";
+  //const char* password = "iloveblake";
+  //saveWiFiCredentials(ssid, password);
 
   // WiFi + NTP
   connectToWiFi();
@@ -1047,16 +1281,22 @@ void setup() {
   delay(1000);
   sendNtpRequest();  // initial time request
 
-  // Setup button interrupt
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
+
+  #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    pinMode(CLEAR_PIN, INPUT_PULLUP);
+
+    // Setup button interrupt
+    attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
+  #endif
 
   // Initialize NimBLE
   NimBLEDevice::init("TreadSpan");
-   
+
   // Get and print the device's Bluetooth MAC address
   Serial.print("Bluetooth MAC Address: ");
   Serial.println(NimBLEDevice::getAddress().toString().c_str());
-  
+
   // Optional: Set transmission power
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 
@@ -1072,7 +1312,7 @@ void setup() {
       NIMBLE_PROPERTY::NOTIFY
   );
   dataCharacteristic->setCallbacks(new DataCharacteristicCallbacks());
-  // AUTHOR NOTE: The NimBLE documentation regarding notify characteristics doesn't really make any sense to me. 
+  // AUTHOR NOTE: The NimBLE documentation regarding notify characteristics doesn't really make any sense to me.
   // Seems like you do not need to do anything special for 2904 stuff the above is sufficient.
   // Uncommenting the code below doesn't hurt anything but... isn't needed.
   /**
@@ -1109,10 +1349,12 @@ void setup() {
   connectToConsoleViaBLE();
 #endif
 
+#ifdef INCLUDE_IMPROV_SERIAL
   improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "My-Device-9a4c2b", "0.9.2", "Treadspan");
   improvSerial.onImprovError(onImprovWiFiErrorCb);
   improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
   improvSerial.setCustomConnectWiFi(connectWifi);  // Optional
+#endif
 //   TreadmillSession tsession;
 //   tsession.start = 1739826223;
 //   tsession.stop = 1739831820;
@@ -1124,27 +1366,36 @@ void setup() {
 // Main Loop
 // ---------------------------------------------------------------------------
 void loop() {
-
-  improvSerial.handleSerial();
+  #ifdef INCLUDE_IMPROV_SERIAL
+    improvSerial.handleSerial();
+  #endif
 
   // Non-blocking NTP check
   checkNtpUpdate();
 
-  periodicLcdUpdateMainLoopHandler();
+  #ifdef LCD_ENABLED
+    periodicLcdUpdateMainLoopHandler();
+  #endif
 
-  // Check button press
-  if (buttonPressed) {
-    buttonPressed = false;
-    simulateNewSession(); // For dev testing only
-  }
+  #ifdef HAS_TFT_DISPLAY
+    periodicTftUpdateMainLoopHandler();
+  #endif
 
-  // Clear sessions if CLEAR_PIN is LOW (do once)
-  if(!clearedSessions && digitalRead(CLEAR_PIN) == LOW) {
-    Serial.println("CLEAR_PIN is LOW, clearing all sessions...");
-    setSessionCountInEEPROM(0);
-    EEPROM.commit();
-    clearedSessions = true;
-  }
+  #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
+    // Check button press
+    if (buttonPressed) {
+      buttonPressed = false;
+      simulateNewSession(); // For dev testing only
+    }
+
+    // Clear sessions if CLEAR_PIN is LOW (do once)
+    if(!clearedSessions && digitalRead(CLEAR_PIN) == LOW) {
+      Serial.println("CLEAR_PIN is LOW, clearing all sessions...");
+      setSessionCountInEEPROM(0);
+      EEPROM.commit();
+      clearedSessions = true;
+    }
+  #endif
 
   if (isMobileAppConnected && isMobileAppSubscribed && !haveNotifiedMobileAppOfFirstSession) {
     haveNotifiedMobileAppOfFirstSession = true;
