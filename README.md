@@ -1,7 +1,7 @@
-# Treadspan (formerly Better LifeSpan Fit)
+# TreadSpan (an alternative to LifeSpan Fit)
 
-__2025-02-23: TreadSpan is under active development.  If you're a developer, you can use this immediately.  We are still working on going through the AppStore review process and improving the install page.__
-
+`2025-02-23: TreadSpan is under active development.  If you're a developer, you can use this immediately.  
+We are still working on going through the AppStore review process and improving the install page.`
 
 Lifespan makes great hardware (Treadmills) but their software is the achilles heel.  It's so close to being an incredible
 platform for logging steps. 
@@ -14,7 +14,44 @@ it'll sync all the sessions done prior.  (You don't have to sync each session in
 Prior to getting my lifespan, I used to have to remember to put my iphone in my pocket whenever i was on the treadmill so that my steps would get 
 counted.  A watch solution doesn't work since your arms are stationary. 
 
-### How it works
+## Instructions
+
+1. Buy a ~$17 [supported chip](https://amzn.to/43eFNhn). (See Hardware section below for other options)
+2. Install the [USB Serial drivers.](https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads)
+3. Connect the chip to your computer using a USB-C cable which has data.
+4. Upload firmware to chip using [this web based installer](https://blak3r.github.io/treadspan-web-installer/).
+5. Be sure to add wifi credentials.
+6. Go to the Apple AppStore and install the "TreadSpan" app.
+7. Open the app and follow instructions.
+
+### Hardware
+
+[![lilygo-ttgo-tdisplay.png](screenshots/lilygo-ttgo-tdisplay.png)](https://amzn.to/43eFNhn)
+
+[(Has a Case) LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board with Shell Version](https://amzn.to/43eFNhn)
+[(No Case Version) - LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board NO Case](https://amzn.to/43eFNhn)
+
+Case version sometimes takes longer to ship and for reasons I don't understand is sold for less than the version without case ($20).
+As of Feb 2025, the case version is $17 + 9.50 shipping and the no case version is $20 with free shipping.  
+
+If you have a 3D printer you can print a case, [Files available here](https://github.com/Xinyuan-LilyGO/TTGO-T-Display/tree/master/3d_file). 
+
+If the links provided have gone bad, here is what you're looking to buy.
+* Brand: LilyGo
+* Chipset: ESPRESSIF-ESP32    <-- Notice it does NOT end with S3
+* Model: TTGO T-Display
+* Flash: 16MB
+* Display: IPS ST7789V 1.14 Inch
+
+DO NOT BUY THESE SIMILAR OPTIONS:
+* T-Display-S3 AMOLED ESP32-S3 with 1.91 Inch RM67162 Display TTGO Development Board Wireless Module
+* T-Display S3 ESP32-S3 1.9-inch ST7789 LCD Display Touchable Screen TTGO Wireless Module Welding Pin Development Board
+* T-Display-S3-Long 16MB Flash ESP32-S3 TTGO Development Board with 3.4-inch Touch Display TFT LCD Wireless Modules
+
+Technically, any ESP32 based arduino should work.  The suggest hardware is just nice since it has an LCD on it so it'll 
+be helpful if you don't have wifi configured properly... or want to know how many sessions are on the device etc.
+
+## How it Works
 
 OMNI Console ----(BLE) ---> Arduino ----(BLE)----> Mobile App
 
@@ -30,44 +67,22 @@ saved on the device.
 
 ![arduino-serial-monitoring-method.png](screenshots/arduino-serial-monitoring-method.png)
 
-### Mobile App Features
+
+## Development Environment Setups
+
+This section is for developers that want to build the software / tweak things.
+I hope that people will write custom firmware for other treadmills that leverage the same BLE protocol so they can leverage
+the mobile app without modification.
+
+The source code to the mobile app is available in the ios-app folder.
+
+### Features
 - It's a barebones application that fetches all logged sessions from the Arduino and adds them to HealthKit.  It does this in one step, no need to do the sync to apple health separately. 
 - It doesn't require you to login and create an account.  No information is shared.
 - It also has some visualizations that are very similar to the step graphs in Apple Health but it'll break out steps taken on your treadmill  
 vs. steps logged organically through a watch or iphone.
 
-### Hardware
-
-#### Easy Install
-Unless you intend to modify the source code you should do the following:
-1. Buy a [supported chip](https://amzn.to/43eFNhn).
-2. Install the usb serial drivers. <https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads>
-3. Connect the chip to your computer.
-4. Go here: https://blak3r.github.io/treadspan-web-installer/ and follow instructions.
-5. Be sure to add wifi credentials.
-6. Then, open the app!
-
-#### Hardware
-Recommended: [LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board with Shell Version](https://amzn.to/43eFNhn)
-The version with the shell is often slower to ship then the version without.  
-
-If the links provided have gone bad, here is what you're looking to buy.
-Brand: LilyGo
-Chipset: ESPRESSIF-ESP32    <-- Notice it does NOT end with S3
-Model: TTGO T-Display
-Flash: 16MB
-Display: IPS ST7789V 1.14 Inch
-
-What you should avoid buying (unless you're going to compile the Arduino dev environment)
-TTGO T-Display S3
-
-
-
-If you're impatient you can get this one:
-
-2. USB-C Cable (Any is fine...)
-
-#### Setup Arduino Development Environment.
+### Setup Arduino Development Environment.
 1. Setup the Arduino IDE for ESP32 support. See this guide: <https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/>
 2. Open the .ino file in the arduino folder.
 3. You'll likely need to install a few libraries such as NimBLE.
@@ -92,10 +107,6 @@ Here I include raw captures of the traffic over both the serial port and BLE as 
 - The serial port version is likely out of reach for someone who has never used a breadboard before.  If someone wants to create a store and sell assembled hardware, i'll gladly link you! 
 - Someone to document the full process of getting XCode setup, a developer certificate, how to put the phone into developer mode.
 
-## Get Help / Support
-
-If you have a question go here: https://github.com/blak3r/treadspan/discussions
-If you want to report a bug go here: https://github.com/blak3r/treadspan/issues
 
 ## FAQS
 
@@ -152,40 +163,29 @@ It is theoretically possible to write commands to the treadmill via the serial p
 But, realistically you can't unless you were willing to sacrifice your existing console and only 
 control it through the mobile app (you would also need the more complicated hardware setup and custom firmware).
 
-## TODOs
+## TODOs (Things actively working on)
 HIGH
 - Create a means to configure the WiFi (with a bluetooth)
 - Make BLE code very robust.
 - Make BLE session end detection more robust, had issues where it thought it was "unknown";
-- Finish UI
 - Add means of detecting if EEPROM is initialized.
-- Connecting to wifi on TFT.
-
-- 
+- Connecting to wifi screen on TFT.
 
 MED
-- Change the bundle id?
+- Change the mobile app bundle id?
 - MOBILE app, metrics page
-  - Don't allow user to go into future.
-  - Sometimes the week view doesn't include the current day.
+  - 6M and year view don't display correct stuff. 
 - Create the FAQ Page Swift View
-- WIFI Reconnect code.
+- WIFI Reconnect code on Arduino.
 
 LOW
 - Splash screen for TREADSPAN (mobile app)
 - What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
-- Need to do a full lcd_clear every once in a while.
 - Maybe increase eeprom size to allow for more sessions?
 - Change the Service UUIDs to be something less generic that could conflict.
 - Could further optimize the serial code to prevent losing commands... but i'm not sure it going to make a difference.
 
+## Get Help / Support
 
-
-HARDWARE OPTIONS:
-- Nano ESP32     , $22 ,  8MB internal, 16mb external, NO BUTTONS, RGB LED though, USB-C, mostly comes unsoldered.
-- ESP32-WROOM-32:, $12 , 4MB Internal,  0           , 1 button  , 1 LED         , Micro-B.
-- M5 Stamp,        $7.5, 
-- M5 is like 39.90 and has 3 buttons.
-- HiLetGo makes an 18.99 one here: but only 4megs.https://www.amazon.com/HiLetgo-Display-Bluetooth-Internet-Development/dp/B07X1W16QS?utm_source=chatgpt.com
-- $20, 16megs, display, ESP32https://www.amazon.com/LILYGO-T-Display-Arduino-Development-CH9102F/dp/B099MPFJ9M/ref=sr_1_2?crid=IZ9PMD1ZGD2R&dib=eyJ2IjoiMSJ9.hMAQJODb9PtfmmMn9HwTh-KIPBNUzAHWRHaG1ja4pGSe1P1GUNxkh5cv6A5GJf7n-tGp6VRREIdH6dBkeBej2y2kOYkj_1E-RK7nyZvyo1OWaXgR_SSi0D4KFglk3W6eCZAR1tq_bD14DU5PJmfz_XqT58H9SnwYXMcla14Od0aZiGyZKON2z9bmkAzCVcsphxL5R2RMqlACUjtdBon0JrKJhDiv7Txs7hpUO0VBxFIUKycNkJsH4zn_zAw8EW5OQvVEcKw-IM2LSIZnDY7maZAadEb_FaIcsQA5HqT2tUnK0JYxWjAGE9UpIpqyto3KtqoJeVsTiF1lyZq_-FEsUYkZIPbEEiDOHO-hrimas88.Aw7TEb7iuAIKR3u5m-FhLiFgNmqYO55EKp0MaL6yEl0&dib_tag=se&keywords=TTGO%2BT-Display&qid=1739295850&s=electronics&sprefix=ttgo%2Bt-display%2Celectronics%2C113&sr=1-2&th=1
-- $17, 16megs, has enclosure + display.
+If you have a question go here: https://github.com/blak3r/treadspan/discussions
+If you want to report a bug go here: https://github.com/blak3r/treadspan/issues
