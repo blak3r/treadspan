@@ -3,7 +3,8 @@
 Lifespan makes great hardware (Treadmills) but their software is the achilles heel.  It's so close to being an incredible
 platform for logging steps. 
 
-This solution solves the biggest limitation of the Lifespan OEM solution.  It enables multiple session logging.  Meaning, 
+This solution solves the biggest limitation of the Lifespan OEM solution.  It will seamlessly log each treadmill session
+to a chip that allows you to sync all sessions in one go with a mobile app. Meaning, 
 you can start and stop your treadmill as much as you want and when you want to sync it to AppleHealth you open up the app and 
 it'll sync all the sessions done prior.  (You don't have to sync each session individually).
 
@@ -36,16 +37,39 @@ vs. steps logged organically through a watch or iphone.
 
 #### Easy Install
 Unless you intend to modify the source code you should do the following:
-1. Buy a supported chip. (Arduino Nano ESP32)
+1. Buy a [supported chip](https://amzn.to/43eFNhn).
 2. Install the usb serial drivers. <https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads>
 3. Connect the chip to your computer.
 4. Go here: https://blak3r.github.io/treadspan-web-installer/ and follow instructions.
+5. Be sure to add wifi credentials.
+6. Then, open the app!
+
+#### Hardware
+Recommended: [LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board with Shell Version](https://amzn.to/43eFNhn)
+The version with the shell is often slower to ship then the version without.  
+
+If the links provided have gone bad, here is what you're looking to buy.
+Brand: LilyGo
+Chipset: ESPRESSIF-ESP32    <-- Notice it does NOT end with S3
+Model: TTGO T-Display
+Flash: 16MB
+Display: IPS ST7789V 1.14 Inch
+
+What you should avoid buying (unless you're going to compile the Arduino dev environment)
+TTGO T-Display S3
+
+
+
+If you're impatient you can get this one:
+
+2. USB-C Cable (Any is fine...)
 
 #### Setup Arduino Development Environment.
 1. Setup the Arduino IDE for ESP32 support. See this guide: <https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/>
 2. Open the .ino file in the arduino folder.
 3. You'll likely need to install a few libraries such as NimBLE.
 4. Once you have the environment setup, you can press the Upload button in the IDE.
+5. (Note: Author has found he has to set his Upload Speed to )
 
 The chip is powered by USB.  So, you can find an old charger you have laying around and put the chip somewhere out of the way.  It needs to be close to the Omni console but can basically just be in the same room.  
 You can wrap the chip in electric tape if you're worried about it touching other metal.
@@ -133,7 +157,8 @@ HIGH
 - Finish UI
 - Add means of detecting if EEPROM is initialized.
 - Connecting to wifi on TFT.
-- Splash screen for TREADSPAN
+
+- 
 
 MED
 - Change the bundle id?
@@ -144,6 +169,7 @@ MED
 - WIFI Reconnect code.
 
 LOW
+- Splash screen for TREADSPAN (mobile app)
 - What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
 - Need to do a full lcd_clear every once in a while.
 - Maybe increase eeprom size to allow for more sessions?
