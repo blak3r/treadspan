@@ -24,6 +24,9 @@ counted.  A watch solution doesn't work since your arms are stationary.
 6. Go to the Apple AppStore and install the "TreadSpan" app.
 7. Open the app and follow instructions.
 
+After the firmware is loaded, you can connect the chip to any old USB-C charger you have laying around.
+It does not need to stay connected to your computer.
+
 ### Hardware
 
 [![lilygo-ttgo-tdisplay.png](screenshots/lilygo-ttgo-tdisplay.png)](https://amzn.to/43eFNhn)
@@ -83,11 +86,13 @@ The source code to the mobile app is available in the ios-app folder.
 vs. steps logged organically through a watch or iphone.
 
 ### Setup Arduino Development Environment.
+
 1. Setup the Arduino IDE for ESP32 support. See this guide: <https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/>
 2. Open the .ino file in the arduino folder.
-3. You'll likely need to install a few libraries such as NimBLE.
-4. Once you have the environment setup, you can press the Upload button in the IDE.
-5. (Note: Author has found he has to set his Upload Speed to )
+3. You'll need to install these libraries:install a few libraries such as NimBLE (v2.2.1)
+   * Nimble (v2.2.1)
+   * TFT_eSPI (2.5.43) - After you install this library, you'll have to edit User_Setup.h and User_Setup_Select.h as shown in [this image](/screenshots/TFT_eSPI_Setup.png).
+4. Default Upload Speed of 921600 would not work for me.  I'd get a packet error.  Goto Tools->Upload Speed and select 460800
 
 The chip is powered by USB.  So, you can find an old charger you have laying around and put the chip somewhere out of the way.  It needs to be close to the Omni console but can basically just be in the same room.  
 You can wrap the chip in electric tape if you're worried about it touching other metal.
