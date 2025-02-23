@@ -1,5 +1,8 @@
 # Treadspan (formerly Better LifeSpan Fit)
 
+__2025-02-23: TreadSpan is under active development.  If you're a developer, you can use this immediately.  We are still working on going through the AppStore review process and improving the install page.__
+
+
 Lifespan makes great hardware (Treadmills) but their software is the achilles heel.  It's so close to being an incredible
 platform for logging steps. 
 
