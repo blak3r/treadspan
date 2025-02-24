@@ -202,6 +202,7 @@ bool haveNotifiedMobileAppOfFirstSession = false;
 int currentSessionIndex = 0;
 int sessionsStored = 0;
 bool clearedSessions = false;
+bool areWifiCredentialsSet = false;
 
 // COMMON STATE VARIABLES (RETRO / OMNI)
 int steps = 0;
@@ -520,6 +521,11 @@ void setLed( uint8_t color, bool status ) {
 // ---------------------------------------------------------------------------
 // Wifi / NTP
 // ---------------------------------------------------------------------------
+// NTP Configuration
+const char* ntpServer = "pool.ntp.org";
+const int ntpPort = 123;
+WiFiUDP ntpUDP;
+
 void trimString(char* str, int maxLength) {
     for (int i = 0; i < maxLength; i++) {
         if (str[i] == '\0') break;  // Stop at first null
@@ -545,43 +551,65 @@ void loadWiFiCredentialsFromEEPROM(char* ssid, char* password) {
     Debug.println(password);
 }
 
-void getWifiCredentialsAndCallWifiBegin() {
+bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
   #if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
-    char ssid[32], password[32];
-    loadWiFiCredentialsFromEEPROM(ssid, password);
+    loadWiFiCredentialsFromEEPROM(ssidBuf, passwordBuf);
   #else
+    strcpy( ssidBuf, ssid); // Developer mode... ssid/password are hardcoded.
+    strcpy( passwordBuf, password);
     //Debug.println("Using SSID from Program Memory named: %s", ssid);
   #endif
-
-  WiFi.begin(ssid, password);
+  return strlen(ssidBuf) > 0 && strlen(passwordBuf) > 0;
 }
 
-void connectToWiFi() {
+void screenWifiConnecting(void); // forward declaration
+
+bool connectWifi(const char *ssid, const char *password) {
   #if LCD_ENABLED
     lcd.clear();
     lcd.print("Connecting to WiFi");
   #endif
 
-  Debug.print("Connecting to WiFi...");
+  Debug.printf("Connecting to WiFi... %s\n", ssid);
+  WiFi.begin(ssid, password);
 
-  getWifiCredentialsAndCallWifiBegin(); // loads from SSID/PASS from file system or program memory depending on build configs.
-
-  while (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      Debug.print(".");
-      toggleLedColor(RED_LED);
+  unsigned long startTime = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < 7000) {
+    #ifdef HAS_TFT_DISPLAY
+      screenWifiConnecting(ssid);
+    #endif
+    delay(100);
   }
-  Debug.println("\nConnected to WiFi!");
-  #if LCD_ENABLED
-    lcd.clear();
-    lcd.print("WIFI Connected");
-  #endif
+
+  return WiFi.status() == WL_CONNECTED;
 }
 
-// NTP Configuration
-const char* ntpServer = "pool.ntp.org";
-const int ntpPort = 123;
-WiFiUDP ntpUDP;
+// This callback is called when WiFi connects and gets an IP
+void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+    // START UDP
+    ntpUDP.begin(ntpPort);
+    delay(100);
+    sendNtpRequest();  // initial time request
+  }
+}
+
+void setupWifi() {
+  char ssid[32], password[32];
+
+    // Register the WiFi event handler
+  WiFi.onEvent(WiFiEvent);
+
+  areWifiCredentialsSet = loadWifiCredentialsIntoBuffers(ssid, password); // loads from SSID/PASS from file system or program memory depending on build configs.
+
+  if( areWifiCredentialsSet ) {
+    connectWifi(ssid, password);
+  } else {
+
+  }
+}
+
+
 
 #define NTP_PACKET_SIZE 48
 byte ntpPacketBuffer[NTP_PACKET_SIZE];
@@ -631,10 +659,12 @@ void checkNtpResponse() {
 }
 
 void checkNtpUpdate() {
-  if ((millis() - lastNtpRequest) >= ntpUpdateInterval) {
-    sendNtpRequest();
+  if( WiFi.status() == WL_CONNECTED ) {
+    if ((millis() - lastNtpRequest) >= ntpUpdateInterval) {
+      sendNtpRequest();
+    }
+    checkNtpResponse();
   }
-  checkNtpResponse();
 }
 
 String getFormattedTime() {
@@ -819,19 +849,6 @@ void saveWiFiCredentials(const char* ssid, const char* password) {
   void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
     Debug.println("IS: onImprovWiFiConnectedCb");
     saveWiFiCredentials(ssid, password);
-  }
-
-  bool connectWifi(const char *ssid, const char *password) {
-    Debug.println("IS: connectWifi");
-    WiFi.begin(ssid, password);
-
-    while (!improvSerial.isConnected())
-    {
-      //blink_led(500, 1);
-      //toggleLedColor(LED_RED);
-    }
-
-    return true;
   }
 #endif
 
@@ -1070,7 +1087,7 @@ void splashScreen() {
   sprite.pushSprite(0,0);
 }
 
-void noWifiScreen() {
+void noWifiScreen(uint8_t configVsNotConnected) {
   sprite.setSwapBytes(true);
   sprite.setTextDatum(TL_DATUM);
   sprite.fillScreen(TFT_BLACK);
@@ -1078,14 +1095,46 @@ void noWifiScreen() {
   sprite.pushImage((RES_X-101)/2,0, 101,96, no_wifi_solid_101x96);
   sprite.setTextSize(2);
   sprite.setTextColor(TFT_WHITE, TFT_BLACK);
-  const char* wifi1 = "Configure WiFi\n";
-  const char* wifi2 = "In Treadspan App";
+
+  const char* wifi1 = configVsNotConnected == 0 ? "Configure WiFi" : "Unable to";
+  const char* wifi2 = configVsNotConnected == 0 ? "In Treadspan App" : "Connect";
+
   int wifi1Width = sprite.textWidth(wifi1);
   int wifi2Width = sprite.textWidth(wifi2);
   sprite.setCursor( (RES_X-wifi1Width)/2 ,100);
   sprite.print(wifi1);
   sprite.setCursor( (RES_X-wifi2Width)/2 ,100+sprite.fontHeight());
   sprite.print(wifi2);
+  sprite.pushSprite(0,0);
+}
+
+void screenWifiConnecting(const char* ssid) {
+  static uint8_t dotCounter = 0;
+  sprite.setSwapBytes(true);
+  sprite.fillScreen(TFT_BLACK);
+  sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
+  sprite.pushImage(0,19, 96, 96, treadspan96);
+  
+  sprite.setFreeFont(0);
+  sprite.setTextDatum( MC_DATUM );
+  sprite.setTextSize(2);
+  sprite.setTextColor(TFT_GOLD, TFT_BLACK);
+  const int centerTextX = 96+((RES_X-(96))/2);
+  const int size2Height = sprite.fontHeight();
+  const int textLine1Y = 15;
+  sprite.drawString("TREADSPAN", centerTextX, textLine1Y + 0*size2Height + 10 );
+  sprite.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  sprite.drawString("WiFi", centerTextX, textLine1Y + 1*size2Height + 10  );
+  sprite.drawString("Connecting", centerTextX, textLine1Y + 2*size2Height + 10  );
+  sprite.drawString("to", centerTextX, textLine1Y + 3*size2Height + 10  );
+  sprite.setTextColor(TFT_MAGENTA, TFT_BLACK);
+  sprite.drawString(ssid, centerTextX, textLine1Y + 5*size2Height + 10 );
+  
+      // Use a lookup table to get the corresponding string
+  static const char *dotStrings[] = {".", "..", "..." };
+  sprite.setTextColor(TFT_YELLOW, TFT_BLACK);
+  sprite.drawString(dotStrings[dotCounter++ % 3], centerTextX, textLine1Y + 6*size2Height + 10 );
+  sprite.setTextDatum(TL_DATUM);
   sprite.pushSprite(0,0);
 }
 
@@ -1160,86 +1209,42 @@ void runningScreen() {
     sprite.pushSprite(0,0);
 }
 
-// /**
-//  * Update the TFT display with step count and unsynced session count in a horizontal format.
-//  */
-// void runningScreen() {
-//     static bool recordIndicator = false;
-//     // Rotation = 2, puts usbc cable on right.
-//     // 240 horizontal
-//     // 135 in Y
-//     sprite.setTextDatum(TL_DATUM);
-//     sprite.fillScreen(TFT_BLACK);
-//     sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
-
-//     // Display Step Count (Large, Centered)
-//     sprite.setTextColor(TFT_SKYBLUE, TFT_BLACK);
-
-//     int biggestSize=0;
-//     int stepNumberMaxWidth;
-//     //sprite.setFreeFont(&DSEG7_Modern_Bold_20);
-//    // sprite.setFreeFont(&DSEG7_Classic_Regular_28); // HORIBLE
-//     sprite.setFreeFont(&AGENCYB20pt7b);
-//     // 10221
-//     #define STEPS_X_PAD 0
-//     #define STEPS_Y_PAD 10
-//     int stepsWidth = sprite.textWidth(String(steps));
-//     int stepsX = (240 - stepsWidth) / 2; // Center horizontally
-//     int stepsHeight = sprite.fontHeight();
-//     sprite.setCursor(stepsX,STEPS_Y_PAD);
-//    // Debug.printf("Steps NUM Cur width: %d, x:%d, y:%d\n", stepsWidth, stepsX, STEPS_Y_PAD);
-//     //sprite.
-//     sprite.drawString(String(steps), 0,0);
-
-//     const int lineX = (STEPS_X_PAD + stepsWidth);
-//     const int lineYe = stepsHeight;
-//     sprite.fillRect(lineX + 20, 0, 3, lineYe - 20, TFT_CYAN);
-
-//     // int stepsIconX = (STEPS_X_PAD + stepsWidth) + 20; 
-//     // int stepsIconY = (stepsHeight - 64) / 2;
-//     // sprite.pushImage(stepsIconX, stepsIconY, 64, 64, greenStep64 );
-
-
-//     sprite.setFreeFont(0);
-//     sprite.setTextColor(TFT_DARKCYAN, TFT_BLACK);
-//     sprite.setTextSize(3);
-//     int sessionsStoredWidth = sprite.textWidth( String(sessionsStored) );
-//     int sessionsStoredHeight = sprite.fontHeight();
-//     int sessionsStoredX=240-(5+sessionsStoredWidth);
-//     int sessionsStoredY=RES_Y-(sessionsStoredHeight + 5);
-//     sprite.drawString(String(sessionsStored), sessionsStoredX, sessionsStoredY);
-
-
-//     // Display unsynced sessions in the bottom-right
-//     sprite.setFreeFont(0);
-//     sprite.setTextSize(2);
-//     sprite.setTextColor(TFT_MAGENTA, TFT_BLACK);
-//     const char* toSyncText = "To Sync:";
-//     int toSyncWidth = sprite.textWidth( toSyncText );
-//     int toSyncHeight = sprite.fontHeight();
-//     int toSyncX=sessionsStoredX - (toSyncWidth + 5);
-//     int toSyncY=sessionsStoredY;
-//     sprite.drawString(String(toSyncText), toSyncX, toSyncY);
-
-//     // Displays a red dot in lower left.
-//     if( isTreadmillActive && recordIndicator) {
-//       sprite.fillCircle(10,110+5, 5, TFT_RED);
-//     }
-//     recordIndicator = !recordIndicator;
-
-//     sprite.pushSprite(0,0);
-// }
+void clockScreen() {
+    static bool recordIndicator = false;
+    sprite.setSwapBytes(true);
+    sprite.setTextDatum(TC_DATUM);
+    sprite.fillScreen(TFT_BLACK);
+    sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
+    sprite.setTextColor(TFT_WHITE, TFT_BLACK);
+   
+    sprite.setTextSize(1);
+    sprite.setFreeFont(&AGENCYB22pt7b);    
+    const int topLineHeight = 20;
+    sprite.drawString(getFormattedTime(), RES_X/2, topLineHeight);
+    sprite.setFreeFont(0);
+    sprite.drawString("UTC", RES_X/2, RES_Y-20);
+    sprite.pushSprite(0,0);
+}
 
 
 void updateTFTDisplay() {
-  uint8_t choice = tftPage % 3;
+  uint8_t choice = tftPage % 5;
 
 //  Debug.printf("choice = %d, but: %d, bot: %d\n", choice, digitalRead(TOP_BUTTON), digitalRead(BOT_BUTTON) );
+
+  if( !areWifiCredentialsSet ) {
+    noWifiScreen(1);
+  }
+  else if(WiFi.status() != WL_CONNECTED ) {
+    noWifiScreen(2);
+  }
 
   switch(choice) {
     case 0: runningScreen(); break;
     case 1: splashScreen(); break;
-    case 2: noWifiScreen(); break;
+    case 2: noWifiScreen(0); break;
+    case 3: noWifiScreen(1); break;
+    case 4: clockScreen(); break;
     default:
       splashScreen();
   }
@@ -1420,12 +1425,7 @@ void setup() {
   //saveWiFiCredentials(ssid, password);
 
   // WiFi + NTP
-  connectToWiFi();
-  delay(1000);
-  ntpUDP.begin(ntpPort);
-  delay(1000);
-  sendNtpRequest();  // initial time request
-
+  setupWifi();
 
   #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
     pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -1495,7 +1495,7 @@ void setup() {
 #endif
 
 #ifdef INCLUDE_IMPROV_SERIAL
-  improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "My-Device-9a4c2b", FW_VERSION, "Treadspan");
+  improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "My-Device-9a4c2b", FW_VERSION, "TreadSpan");
   improvSerial.onImprovError(onImprovWiFiErrorCb);
   improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
   improvSerial.setCustomConnectWiFi(connectWifi);  // Optional

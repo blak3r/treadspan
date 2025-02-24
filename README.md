@@ -51,7 +51,7 @@ DO NOT BUY THESE SIMILAR OPTIONS:
 * T-Display S3 ESP32-S3 1.9-inch ST7789 LCD Display Touchable Screen TTGO Wireless Module Welding Pin Development Board
 * T-Display-S3-Long 16MB Flash ESP32-S3 TTGO Development Board with 3.4-inch Touch Display TFT LCD Wireless Modules
 
-Technically, any ESP32 based arduino should work.  The suggest hardware is just nice since it has an LCD on it so it'll 
+Technically, any ESP32 based arduino should work.  The suggested hardware is nice since it has an LCD on it so it'll 
 be helpful if you don't have wifi configured properly... or want to know how many sessions are on the device etc.
 
 ## How it Works
@@ -194,3 +194,6 @@ LOW
 
 If you have a question go here: https://github.com/blak3r/treadspan/discussions
 If you want to report a bug go here: https://github.com/blak3r/treadspan/issues
+
+
+1305876 - with Improv andDebug on.
