@@ -24,6 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		2516EBA22D6D2AD2008D3E18 /* TreadSpan-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "TreadSpan-Info.plist"; sourceTree = "<group>"; };
 		2598E4F02D419C8600ED5595 /* TreadSpan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TreadSpan.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2598E5002D419C8700ED5595 /* LifespanArduinoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LifespanArduinoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2598E50A2D419C8700ED5595 /* LifespanArduinoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LifespanArduinoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -75,6 +76,7 @@
 		2598E4E72D419C8500ED5595 = {
 			isa = PBXGroup;
 			children = (
+				2516EBA22D6D2AD2008D3E18 /* TreadSpan-Info.plist */,
 				2598E4F22D419C8600ED5595 /* LifespanArduino */,
 				2598E5032D419C8700ED5595 /* LifespanArduinoTests */,
 				2598E50D2D419C8700ED5595 /* LifespanArduinoUITests */,
@@ -401,6 +403,7 @@
 				DEVELOPMENT_TEAM = 6KSF5CJPD6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "TreadSpan-Info.plist";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to connect to the arduino micro data logger and sync sessions.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "This app uses Bluetooth to connect to your treadmill and sync sessions.";
@@ -417,7 +420,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Robotion.LifespanArduino;
+				PRODUCT_BUNDLE_IDENTIFIER = com.blakerobertson.treadspan;
 				PRODUCT_NAME = TreadSpan;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -437,6 +440,7 @@
 				DEVELOPMENT_TEAM = 6KSF5CJPD6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "TreadSpan-Info.plist";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to connect to the arduino micro data logger and sync sessions.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "This app uses Bluetooth to connect to your treadmill and sync sessions.";
@@ -453,7 +457,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Robotion.LifespanArduino;
+				PRODUCT_BUNDLE_IDENTIFIER = com.blakerobertson.treadspan;
 				PRODUCT_NAME = TreadSpan;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
