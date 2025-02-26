@@ -31,8 +31,8 @@ It does not need to stay connected to your computer.
 
 [![lilygo-ttgo-tdisplay.png](screenshots/lilygo-ttgo-tdisplay.png)](https://amzn.to/43eFNhn)
 
-[(Has a Case) LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board with Shell Version](https://amzn.to/43eFNhn)
-[(No Case Version) - LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board NO Case](https://amzn.to/43eFNhn)
+* [(Has a Case) LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board with Shell Version](https://amzn.to/43eFNhn)
+* [(No Case Version) - LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board NO Case](https://amzn.to/43eFNhn)
 
 Case version sometimes takes longer to ship and for reasons I don't understand is sold for less than the version without case ($20).
 As of Feb 2025, the case version is $17 + 9.50 shipping and the no case version is $20 with free shipping.  
@@ -171,10 +171,12 @@ control it through the mobile app (you would also need the more complicated hard
 ## TODOs (Things actively working on)
 HIGH
 - Create a means to configure the WiFi (with a bluetooth)
-- Make BLE code very robust.
-- Make BLE session end detection more robust, had issues where it thought it was "unknown";
+- ~~Make BLE code very robust.~~
+- ~~Make BLE session end detection more robust, had issues where it thought it was "unknown";~~
 - Add means of detecting if EEPROM is initialized.
-- Connecting to wifi screen on TFT.
+- ~~Don't start session until time is set? Or... once time is set calculate it from the session duration.~~
+- ~~Connecting to wifi screen on TFT.~~
+- See if we can compress space down so partition scheme doesn't need modified.
 
 MED
 - Change the mobile app bundle id?

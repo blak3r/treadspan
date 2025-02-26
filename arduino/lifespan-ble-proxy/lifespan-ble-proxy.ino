@@ -16,7 +16,7 @@
 #include <time.h>
 #include <Wire.h>
 
-//#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 1
 //#define LCD_ENABLED 1
 #define HAS_TFT_DISPLAY 1
 //#define RETRO_MODE 1        // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
@@ -26,14 +26,16 @@
 //#define SESSION_SIMULATION_BUTTONS_ENABLED 1
 #define INCLUDE_IMPROV_SERIAL 1
 
-#if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
-
 #define FW_VERSION "v0.9.2"
-
-#else
+#ifndef LOAD_WIFI_CREDENTIALS_FROM_EEPROM
   const char* ssid = "Angela";
   const char* password = "iloveblake"; // Example guest network password for demonstration
 #endif
+
+
+//-------------------------------------------------------------------------------------------------------------- //
+//----------------------------------[ DONT MODIFY BELOW THIS LINE ]--------------------------------------------- //
+//-------------------------------------------------------------------------------------------------------------- //
 
 // DEPENDENT LIBARIES
 #if LCD_ENABLED
@@ -74,6 +76,7 @@
 #define MAX_SESSIONS            ((512-(64+4))/12)
 #define SESSION_SIZE_BYTES      12
 
+String getFormattedTimeWithMS(); // Forward Declaration
 
 class DebugWrapper {
 public:
@@ -115,12 +118,12 @@ public:
   // A simple variadic printf implementation.
   int printf(const char* format, ...) {
   #ifdef ENABLE_DEBUG
-    char buffer[128];  // Adjust buffer size as needed
+    char buffer[256];  // Adjust buffer size as needed
     va_list args;
     va_start(args, format);
     int ret = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
-    Serial.print(buffer);
+    Serial.printf( "[%s] %s", getFormattedTimeWithMS(), buffer);
     return ret;
   #else
     return 0;
@@ -146,8 +149,6 @@ public:
 };
 
 DebugWrapper Debug;
-
-
 
 #ifdef RETRO_MODE
   #include <HardwareSerial.h>
@@ -185,6 +186,7 @@ struct TreadmillSession {
   uint32_t stop;
   uint32_t steps;
 };
+bool wasTimeSet = false;
 
 // BLE UUIDs
 static const char* BLE_SERVICE_UUID       = "0000A51A-12BB-C111-1337-00099AACDEF0";
@@ -243,48 +245,26 @@ float estimate_mph(int value) {
   bool consoleIsConnected = false;
   int consoleCommandIndex = 0;
   static unsigned long lastConsoleCommandSentAt = 0;  // last time we requested a command
-  const unsigned long consoleCommandUpdateInterval = 500;
-  volatile int lastConsoleCommandIndex = 0;
+  const unsigned long consoleCommandUpdateIntervalMin = 300; // Will send a new command after 
+  const unsigned long consoleCommandUpdateIntervalMax = 1400; // Will wait for up to 1.2 seconds, found with 500 there were occassional commands that took longer.
+  volatile uint8_t lastConsoleCommandIndex = 0;
+  volatile uint8_t lastConsoleCommandOpcode = 0;
+  volatile bool commandResponseReceived = true;
+  volatile uint8_t neverRecvCIDCount = 0;
+  volatile uint8_t timesSessionStatusHasBeenTheSame = 0;
+  volatile uint8_t lastSessionStatus = -1;
 
-  // We'll cycle through these commands
-  const char *hexStrings[] = {
-    "A188000000", // Steps
-    "A189000000", // Session time
-    "A191000000", // Treadmill status (running, paused, etc.)
-    "A185000000", // Distance
-    "A187000000", // Calories
-    "A182000000", // Speed
-  };
-  const int consoleCommandCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+  #define OPCODE_STEPS 0x88
+  #define OPCODE_DURATION 0x89
+  #define OPCODE_STATUS 0x91
+  #define OPCODE_DISTANCE 0x85
+  #define OPCODE_CALORIES 0x87
+  #define OPCODE_SPEED 0x82
 
-  #define CONSOLE_STEPS_INDEX          0
-  #define CONSOLE_SESSION_TIME_INDEX   1
-  #define CONSOLE_SESSION_STATUS_INDEX 2
-  #define CONSOLE_DISTANCE_INDEX       3
-  #define CONSOLE_CALORIES_INDEX       4
-  #define CONSOLE_SPEED_INDEX          5
-
-  // Convert hex string to byte array
-  int hexStringToByteArray(const char *hexString, uint8_t *byteArray, int maxSize) {
-    int len = strlen(hexString);
-    if (len % 2 != 0) {
-       // Debug.println("Invalid hex string length.");setup
-        return -1;  // Invalid length
-    }
-
-    int byteCount = len / 2;
-    if (byteCount > maxSize) {
-        Debug.println("Byte array too small.");
-        return -1;  // Not enough space
-    }
-
-    for (int i = 0; i < byteCount; i++) {
-        char buffer[3] = {hexString[i * 2], hexString[i * 2 + 1], '\0'};
-        byteArray[i] = (uint8_t) strtoul(buffer, NULL, 16);
-    }
-
-    return byteCount;
-  }
+  // We want to get STATUS and STEPS more frequently so LCD updates quicker / sessions starting / stopping are detected faster.
+  const uint8_t consoleCommandOrder[] = {OPCODE_STEPS, OPCODE_STATUS, OPCODE_DURATION, OPCODE_STATUS, OPCODE_DISTANCE, 
+                                         OPCODE_STEPS, OPCODE_STATUS, OPCODE_CALORIES, OPCODE_STATUS, OPCODE_SPEED};
+  #define CONSOLE_COMMAND_COUNT sizeof(consoleCommandOrder);
 
   // -----------------------------------------------------------------------
   // BLE Scan -> Look for "LifeSpan-TM"
@@ -299,7 +279,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
       if (advertisedDevice->haveName() /* advertisedDevice->isAdvertisingService(NimBLEUUID(CONSOLE_SERVICE_UUID))*/) {
         std::string devName = advertisedDevice->getName();
         if (devName.rfind(CONSOLE_NAME_PREFIX, 0) == 0) {
-          Debug.printf("Found a 'TreadSpan' device at: %s\n", advertisedDevice->getAddress() );
+          Debug.printf("Found a 'LifeSpan' device at: %s\n", advertisedDevice->getAddress() );
           /** stop scan before connecting */
           NimBLEDevice::getScan()->stop();
           foundConsoleAddress = advertisedDevice->getAddress();
@@ -311,7 +291,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     /** Callback to process the results of the completed scan or restart it */
     void onScanEnd(const NimBLEScanResults& results, int reason) override {
         Debug.printf("Scan Ended, reason: %d, device count: %d; Restarting scan\n", reason, results.getCount());
-        NimBLEDevice::getScan()->start(1000, false, true);
+        NimBLEDevice::getScan()->start(1000, false, true); // <-- this is important, not sure why the main loop reconnect doesn't work.
     }
 } scanCallbacks;
 
@@ -328,59 +308,91 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     #endif
 
     // Parse the responses for each index
-    if (lastConsoleCommandIndex == CONSOLE_STEPS_INDEX) {
+    if (lastConsoleCommandOpcode == OPCODE_STEPS) {
       steps = data[2]*256 + data[3];
       Debug.printf("Steps: %d\n", steps);
     }
-    else if( lastConsoleCommandIndex == CONSOLE_CALORIES_INDEX ) {
+    else if( lastConsoleCommandOpcode == OPCODE_CALORIES ) {
       calories = data[2]*256 + data[3];
-      //Debug.printf("Calories: %d\n", calories);
+      Debug.printf("Calories: %d\n", calories);
     }
-    else if( lastConsoleCommandIndex == CONSOLE_DISTANCE_INDEX ) {
+    else if( lastConsoleCommandOpcode == OPCODE_DISTANCE ) {
       distance = data[2]*256 + data[3];
-      //Debug.printf("Distance: %d\n", distance);
+      Debug.printf("Distance: %d\n", distance);
     }
-    else if( lastConsoleCommandIndex == CONSOLE_SPEED_INDEX ) {
+    else if( lastConsoleCommandOpcode == OPCODE_SPEED ) {
       avgSpeedInt = data[2]*256 + data[3];
       avgSpeedFloat = estimate_mph(avgSpeedInt);
-      //Debug.printf("AvgSpeedInt: %d, %.1f MPH\n", avgSpeedInt, avgSpeedFloat);
+      Debug.printf("AvgSpeedInt: %d, %.1f MPH\n", avgSpeedInt, avgSpeedFloat);
     }
-    else if( lastConsoleCommandIndex == CONSOLE_SESSION_STATUS_INDEX ) {
+    else if( lastConsoleCommandOpcode == OPCODE_DURATION ) {
+      Debug.printf("DURATION: %d:%d:%d\n", data[2], data[3], data[4]);
+      if( wasTimeSet ) {
+        // Fixes issue where device powers on after a session on treadmill had started (or if time wasn't set when session started)
+        uint32_t sessionStartTime = (uint32_t) time(nullptr) - ((data[4]) + (data[3]*60) + (data[2]*60*60));
+        //Debug.printf("Updating sessionStartTime to: %lu\n", sessionStartTime);
+        currentSession.start = sessionStartTime;
+      }
+    }
+    else if( lastConsoleCommandOpcode == OPCODE_STATUS ) {
       uint8_t status = data[2];
       #define STATUS_RUNNING         3
       #define STATUS_PAUSED          5
       #define STATUS_SUMMARY_SCREEN  4
       #define STATUS_STANDBY         1
 
-      Debug.print("Treadmill Status: ");
+      // Encountered some strange behavior.  I think we were missing command responses from the console.  And this would cause us to
+      // interpret incorrectly a different command.  Causing us to stop sessions and immediately restart them.  I'm not only ending
+      // sessions if I get the same status at least twice. 
+      if( lastSessionStatus == status ) {
+        timesSessionStatusHasBeenTheSame += 1;
+      } else {
+        timesSessionStatusHasBeenTheSame = 0;
+      }
+      lastSessionStatus = status;
+
+      Debug.printf("Treadmill Status: ");
+
+      if( data[3] || data[4] ) {
+        // Extra check to ensure we aren't processing like wrong command here. (These are otherwise always 0);
+        Debug.printf("Invalid CMD Resp for Status, [3]=%2X, [4]=%2X", data[3], data[4]);
+        commandResponseReceived = true;
+        return;
+      }
       switch(status) {
         case STATUS_RUNNING:
-          Debug.print("RUNNING");
-          if( !isTreadmillActive ) sessionStartedDetected();
-          isTreadmillActive = true;
+          Debug.print("RUNNING\n");
+          if( !isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1 ) {
+            sessionStartedDetected();
+            isTreadmillActive = true;
+          } 
           break;
         case STATUS_PAUSED:
-          Debug.print("PAUSED");
-          if( isTreadmillActive ) sessionEndedDetected();
-          isTreadmillActive = false;
+          Debug.print("PAUSED\n");
+          if( isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1 ) {
+            sessionEndedDetected();
+            isTreadmillActive = false;
+          } 
           break;
         case STATUS_SUMMARY_SCREEN:
-          Debug.print("SUMMARY_SCREEN");
-          if( isTreadmillActive ) sessionEndedDetected();
-          isTreadmillActive = false;
+          Debug.print("SUMMARY_SCREEN\n");
+          if( isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1 ) {
+            sessionEndedDetected();
+            isTreadmillActive = false;
+          } 
           break;
         case STATUS_STANDBY:
-          Debug.print("STANDBY");
-          if( isTreadmillActive ) sessionEndedDetected();
-          isTreadmillActive = false;
+          Debug.print("STANDBY\n");
+          if( isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1 ) {
+            sessionEndedDetected();
+            isTreadmillActive = false;
+          } 
           break;
         default:
-          Debug.printf("UNKNOWN: '%d'", status);
+          Debug.printf("UNKNOWN: '%d'\n", status);
       }
-      Debug.print("\n");
     }
-    // else if( lastConsoleCommandIndex == CONSOLE_SESSION_TIME_INDEX ) ...
-    //   you could parse time if needed
+    commandResponseReceived = true;
   }
 
  // Modified BLE Client Callback for NimBLE
@@ -430,7 +442,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
     if (consoleNotifyCharacteristic->canNotify()) {
       consoleNotifyCharacteristic->subscribe(true, consoleNotifyCallback);
-      Debug.println("Subscribed to notifications on FFF1.");
+      Debug.println("Subbed to notifications on FFF1.");
     }
 
     // FFF2: Write characteristic
@@ -445,7 +457,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
    // Public function to scan for "LifeSpan-TM" device & connect
   void connectToConsoleViaBLE() {
-    Debug.println("Scanning for LifeSpan Omni Console...");
+    Debug.printf("Scanning for LifeSpan Omni Console...\n");
 
     // Reset flags
     foundConsole = false;
@@ -468,9 +480,8 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
 
   // Send read requests (hexStrings) in a round-robin fashion
+  
   void consoleBLEMainLoop() {
-    static uint8_t byteArray[20];
-
     // If console is not connected, try to reconnect periodically
     if (!consoleIsConnected) {
       static unsigned long lastTry = 0;
@@ -480,25 +491,36 @@ class ScanCallbacks : public NimBLEScanCallbacks {
       }
     } else {
       // If enough time has passed, send the next read request
-      if ( (millis() - lastConsoleCommandSentAt >= consoleCommandUpdateInterval) ) {
+      uint32_t millisSinceLastCommandSentAt = millis() - lastConsoleCommandSentAt;
+      bool isItMoreThanMinUpdateInterval = (millisSinceLastCommandSentAt >= consoleCommandUpdateIntervalMin);
+      bool isItMoreThanMaxUpdateInterval = (millisSinceLastCommandSentAt >= consoleCommandUpdateIntervalMax);
+
+      if ( (commandResponseReceived && isItMoreThanMinUpdateInterval) || isItMoreThanMaxUpdateInterval ) {
         lastConsoleCommandSentAt = millis(); // Reset timer
 
-        int size = hexStringToByteArray(hexStrings[consoleCommandIndex], byteArray, sizeof(byteArray));
-        if (size > 0) {
-          #if VERBOSE_LOGGING
-            Debug.printf("REQ %d: ", consoleCommandIndex);
-            for (int i = 0; i < size; i++) {
-              Debug.printf("%02X ", byteArray[i]);
-            }
-            Debug.print("\n");
-          #endif
+        uint8_t consoleCmdBuf[] = { 0xA1, consoleCommandOrder[consoleCommandIndex], 0x00, 0x00, 0x00, 0x00 };
 
-          consoleWriteCharacteristic->writeValue((uint8_t*)byteArray, size);
-          lastConsoleCommandIndex = consoleCommandIndex;
+        #if VERBOSE_LOGGING
+          Debug.printf("REQ %d: ", consoleCommandIndex);
+          for (int i = 0; i < sizeof(consoleCmdBuf); i++) {
+            Debug.printf("%02X ", consoleCmdBuf[i]);
+          }
+          Debug.print("\n");
+        #endif
 
-          consoleCommandIndex = (consoleCommandIndex + 1) % consoleCommandCount;
+        if( !commandResponseReceived ) {
+          Debug.printf("ERROR: Never RECV CID: %d, %2X\n", lastConsoleCommandIndex, lastConsoleCommandOpcode);
+          neverRecvCIDCount++;
         }
+        Debug.printf("Wrote CID %d, %2X\n", consoleCommandIndex, consoleCommandOrder[consoleCommandIndex]);
+        consoleWriteCharacteristic->writeValue((uint8_t*)consoleCmdBuf, sizeof(consoleCmdBuf));
+        lastConsoleCommandIndex = consoleCommandIndex;
+        lastConsoleCommandOpcode = consoleCommandOrder[consoleCommandIndex];
+        commandResponseReceived = false;
+
+        consoleCommandIndex = (consoleCommandIndex + 1) % CONSOLE_COMMAND_COUNT;
       }
+
     }
   }
 #endif
@@ -555,8 +577,8 @@ bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
   #if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
     loadWiFiCredentialsFromEEPROM(ssidBuf, passwordBuf);
   #else
-    strcpy( ssidBuf, ssid); // Developer mode... ssid/password are hardcoded.
-    strcpy( passwordBuf, password);
+    strncpy( ssidBuf, ssid, sizeof(ssidBuf)); // Developer mode... ssid/password are hardcoded.
+    strncpy( passwordBuf, password, sizeof(ssidBuf));
     //Debug.println("Using SSID from Program Memory named: %s", ssid);
   #endif
   return strlen(ssidBuf) > 0 && strlen(passwordBuf) > 0;
@@ -655,6 +677,7 @@ void checkNtpResponse() {
     Debug.println(getFormattedTime());
 
     ntpUpdateInterval = 600000; // set to 10 minutes after first success
+    wasTimeSet = true;
   }
 }
 
@@ -679,6 +702,28 @@ String getFormattedTime() {
   char buffer[30];
   strftime(buffer, sizeof(buffer), "%H:%M:%S", &timeinfo);
   return String(buffer);
+}
+
+
+String getFormattedTimeWithMS() {
+  time_t now = time(nullptr);
+  if (now < 100000) {
+    return "TBD, NTP sync";
+  }
+
+  // Use millis() to get the milliseconds component (note: millis() returns the time since program start)
+  unsigned long ms = millis() % 1000;
+
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  char buffer[40];
+  strftime(buffer, sizeof(buffer), "%H:%M:%S", &timeinfo);
+
+  char result[50];
+  snprintf(result, sizeof(result), "%s.%03lu", buffer, ms);
+
+  return String(result);
 }
 
 // ---------------------------------------------------------------------------
@@ -1159,7 +1204,7 @@ void runningScreen() {
     const int botLineStartY = RES_Y-35;
 
     //sprite.fillRect( (RES_X/2)-2, 0, 3, topLineHeight, TFT_CYAN);
-    //sprite.pushImage(RES_X-48,0, 48,48,bluetooth48);
+    sprite.pushImage(RES_X-19,0, 19, 32, bluetooth19x32);
     
     sprite.setTextSize(2);
     sprite.setFreeFont(&AGENCYB22pt7b);
@@ -1185,10 +1230,12 @@ void runningScreen() {
     sprite.setTextSize(3);
     int sessionsStoredWidth = sprite.textWidth( String(sessionsStored) );
     int sessionsStoredHeight = sprite.fontHeight();
-    int sessionsStoredX=240-(5+sessionsStoredWidth);
+    int sessionsStoredX=RES_X-(5+sessionsStoredWidth);
     int sessionsStoredY=RES_Y-(sessionsStoredHeight + 5);
     sprite.drawString(String(sessionsStored), sessionsStoredX, sessionsStoredY);
 
+    // TODO remove me, this is for debug purposes.
+    sprite.drawString(String(neverRecvCIDCount), sessionsStoredX, sessionsStoredY-40); 
 
     // Display unsynced sessions in the bottom-right
     sprite.setFreeFont(0);
@@ -1202,7 +1249,8 @@ void runningScreen() {
     //sprite.drawString(String(toSyncText), toSyncX, toSyncY);
     // Displays a red dot in lower left.
     if( isTreadmillActive && recordIndicator) {
-      sprite.fillCircle(10,110+5, 5, TFT_RED);
+      //sprite.fillCircle(10,110+5, 5, TFT_RED); // BOTTOM_LEFT LOCATION
+      sprite.fillCircle(5,5, 5, TFT_RED); // TOP_RIGHT LOCATION
     }
     recordIndicator = !recordIndicator;
 
