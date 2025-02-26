@@ -6,28 +6,9 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXContainerItemProxy section */
-		2598E5012D419C8700ED5595 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 2598E4E82D419C8500ED5595 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 2598E4EF2D419C8500ED5595;
-			remoteInfo = LifespanArduino;
-		};
-		2598E50B2D419C8700ED5595 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 2598E4E82D419C8500ED5595 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 2598E4EF2D419C8500ED5595;
-			remoteInfo = LifespanArduino;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXFileReference section */
 		2516EBA22D6D2AD2008D3E18 /* TreadSpan-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "TreadSpan-Info.plist"; sourceTree = "<group>"; };
 		2598E4F02D419C8600ED5595 /* TreadSpan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TreadSpan.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		2598E5002D419C8700ED5595 /* LifespanArduinoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LifespanArduinoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		2598E50A2D419C8700ED5595 /* LifespanArduinoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LifespanArduinoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -36,34 +17,10 @@
 			path = LifespanArduino;
 			sourceTree = "<group>";
 		};
-		2598E5032D419C8700ED5595 /* LifespanArduinoTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = LifespanArduinoTests;
-			sourceTree = "<group>";
-		};
-		2598E50D2D419C8700ED5595 /* LifespanArduinoUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = LifespanArduinoUITests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		2598E4ED2D419C8500ED5595 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		2598E4FD2D419C8700ED5595 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		2598E5072D419C8700ED5595 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -78,8 +35,6 @@
 			children = (
 				2516EBA22D6D2AD2008D3E18 /* TreadSpan-Info.plist */,
 				2598E4F22D419C8600ED5595 /* LifespanArduino */,
-				2598E5032D419C8700ED5595 /* LifespanArduinoTests */,
-				2598E50D2D419C8700ED5595 /* LifespanArduinoUITests */,
 				2598E4F12D419C8600ED5595 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,8 +43,6 @@
 			isa = PBXGroup;
 			children = (
 				2598E4F02D419C8600ED5595 /* TreadSpan.app */,
-				2598E5002D419C8700ED5595 /* LifespanArduinoTests.xctest */,
-				2598E50A2D419C8700ED5595 /* LifespanArduinoUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -119,52 +72,6 @@
 			productReference = 2598E4F02D419C8600ED5595 /* TreadSpan.app */;
 			productType = "com.apple.product-type.application";
 		};
-		2598E4FF2D419C8700ED5595 /* LifespanArduinoTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 2598E5172D419C8700ED5595 /* Build configuration list for PBXNativeTarget "LifespanArduinoTests" */;
-			buildPhases = (
-				2598E4FC2D419C8700ED5595 /* Sources */,
-				2598E4FD2D419C8700ED5595 /* Frameworks */,
-				2598E4FE2D419C8700ED5595 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				2598E5022D419C8700ED5595 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				2598E5032D419C8700ED5595 /* LifespanArduinoTests */,
-			);
-			name = LifespanArduinoTests;
-			packageProductDependencies = (
-			);
-			productName = LifespanArduinoTests;
-			productReference = 2598E5002D419C8700ED5595 /* LifespanArduinoTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		2598E5092D419C8700ED5595 /* LifespanArduinoUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 2598E51A2D419C8700ED5595 /* Build configuration list for PBXNativeTarget "LifespanArduinoUITests" */;
-			buildPhases = (
-				2598E5062D419C8700ED5595 /* Sources */,
-				2598E5072D419C8700ED5595 /* Frameworks */,
-				2598E5082D419C8700ED5595 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				2598E50C2D419C8700ED5595 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				2598E50D2D419C8700ED5595 /* LifespanArduinoUITests */,
-			);
-			name = LifespanArduinoUITests;
-			packageProductDependencies = (
-			);
-			productName = LifespanArduinoUITests;
-			productReference = 2598E50A2D419C8700ED5595 /* LifespanArduinoUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -177,14 +84,6 @@
 				TargetAttributes = {
 					2598E4EF2D419C8500ED5595 = {
 						CreatedOnToolsVersion = 16.2;
-					};
-					2598E4FF2D419C8700ED5595 = {
-						CreatedOnToolsVersion = 16.2;
-						TestTargetID = 2598E4EF2D419C8500ED5595;
-					};
-					2598E5092D419C8700ED5595 = {
-						CreatedOnToolsVersion = 16.2;
-						TestTargetID = 2598E4EF2D419C8500ED5595;
 					};
 				};
 			};
@@ -203,28 +102,12 @@
 			projectRoot = "";
 			targets = (
 				2598E4EF2D419C8500ED5595 /* TreadSpan */,
-				2598E4FF2D419C8700ED5595 /* LifespanArduinoTests */,
-				2598E5092D419C8700ED5595 /* LifespanArduinoUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		2598E4EE2D419C8500ED5595 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		2598E4FE2D419C8700ED5595 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		2598E5082D419C8700ED5595 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -241,34 +124,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		2598E4FC2D419C8700ED5595 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		2598E5062D419C8700ED5595 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		2598E5022D419C8700ED5595 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 2598E4EF2D419C8500ED5595 /* TreadSpan */;
-			targetProxy = 2598E5012D419C8700ED5595 /* PBXContainerItemProxy */;
-		};
-		2598E50C2D419C8700ED5595 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 2598E4EF2D419C8500ED5595 /* TreadSpan */;
-			targetProxy = 2598E50B2D419C8700ED5595 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		2598E5122D419C8700ED5595 /* Debug */ = {
@@ -400,7 +256,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"LifespanArduino/Preview Content\"";
-				DEVELOPMENT_TEAM = 6KSF5CJPD6;
+				DEVELOPMENT_TEAM = 86KLVDAD38;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "TreadSpan-Info.plist";
@@ -420,7 +276,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.blakerobertson.treadspan;
+				PRODUCT_BUNDLE_IDENTIFIER = com.robotion.treadspan;
 				PRODUCT_NAME = TreadSpan;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -437,7 +293,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"LifespanArduino/Preview Content\"";
-				DEVELOPMENT_TEAM = 6KSF5CJPD6;
+				DEVELOPMENT_TEAM = 86KLVDAD38;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "TreadSpan-Info.plist";
@@ -457,83 +313,11 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.blakerobertson.treadspan;
+				PRODUCT_BUNDLE_IDENTIFIER = com.robotion.treadspan;
 				PRODUCT_NAME = TreadSpan;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
-		2598E5182D419C8700ED5595 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6KSF5CJPD6;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Robotion.LifespanArduinoTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LifespanArduino.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LifespanArduino";
-			};
-			name = Debug;
-		};
-		2598E5192D419C8700ED5595 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6KSF5CJPD6;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Robotion.LifespanArduinoTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LifespanArduino.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LifespanArduino";
-			};
-			name = Release;
-		};
-		2598E51B2D419C8700ED5595 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6KSF5CJPD6;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Robotion.LifespanArduinoUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = LifespanArduino;
-			};
-			name = Debug;
-		};
-		2598E51C2D419C8700ED5595 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6KSF5CJPD6;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Robotion.LifespanArduinoUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = LifespanArduino;
 			};
 			name = Release;
 		};
@@ -554,24 +338,6 @@
 			buildConfigurations = (
 				2598E5152D419C8700ED5595 /* Debug */,
 				2598E5162D419C8700ED5595 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		2598E5172D419C8700ED5595 /* Build configuration list for PBXNativeTarget "LifespanArduinoTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				2598E5182D419C8700ED5595 /* Debug */,
-				2598E5192D419C8700ED5595 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		2598E51A2D419C8700ED5595 /* Build configuration list for PBXNativeTarget "LifespanArduinoUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				2598E51B2D419C8700ED5595 /* Debug */,
-				2598E51C2D419C8700ED5595 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
