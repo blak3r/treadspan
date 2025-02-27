@@ -150,6 +150,7 @@ public:
 
 DebugWrapper Debug;
 
+
 #ifdef RETRO_MODE
   #include <HardwareSerial.h>
 
@@ -216,8 +217,8 @@ int speedInt = 0;
 float speedFloat = 0;
 boolean isTreadmillActive = 0;
 // NEW: Global variables for tracking today's steps
-String lastRecordedDate = "";
-unsigned long totalStepsToday = 0;
+String lastRecordedDate = "";      //YYYY-MM-DD
+unsigned long totalStepsToday = 0; //
 
 TreadmillSession currentSession;
 
@@ -905,6 +906,11 @@ String getFormattedDate() {
   if (now < 100000) {
     return "NTP";
   }
+
+  // Set timezone to Pacific Time
+  setenv("TZ", "PST8PDT", 1); // "PST8PDT" adjusts for daylight saving time
+  tzset();
+
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
   char buffer[11];  // "YYYY-MM-DD"
@@ -914,7 +920,7 @@ String getFormattedDate() {
 
 unsigned long getTodaysSteps() {
   String today = getFormattedDate();
-  if (lastRecordedDate != today) {
+  if (wasTimeSet && lastRecordedDate != today) {
     lastRecordedDate = today;
     totalStepsToday = 0;
   }
@@ -1183,6 +1189,39 @@ void screenWifiConnecting(const char* ssid) {
   sprite.pushSprite(0,0);
 }
 
+
+/**
+ * for sizeY = 32, X will take up 14 pixels
+ * for sizeY = 24, width of icon is 10 pixels
+ * @param x - startX upper left corner
+ * @param y - startY 
+ * @param sizeY - how big you want the icon such as 24 pixels high.
+ * @param color - color, default is tft.color565(0, 130, 252);
+ */
+void drawBluetoothLogo( int x, int y, int sizeY, uint32_t color) {
+  const uint16_t fullX = x+((14*sizeY)/32);
+  const uint16_t centerX = x+(fullX-x)/2;
+  const uint16_t x0 = x;
+  const uint16_t y0 = y;
+  const uint16_t y1 = y+((9*sizeY)/32);
+  const uint16_t y2 = y+((22*sizeY)/32);
+  const uint16_t fullY = sizeY;
+  sprite.drawLine(centerX,     y0, centerX, fullY, color);   // Vertical center line
+  sprite.drawLine(x0     ,     y1,   fullX,    y2, color);   // Left down
+  sprite.drawLine(x0     ,     y2,   fullX,    y1, color);  // Upper middle cross
+  sprite.drawLine(centerX,     y0,   fullX,    y1, color);  //Small line top of B
+  sprite.drawLine(centerX,  fullY,   fullX,    y2, color);  // Small Line, Bottom of B
+
+  Debug.printf("fullX=%d, centerX=%d, y1=%d, y2=%d, fullY=%d, 0x%4X\n", fullX, centerX, y1, y2, fullY, color);
+}
+
+#define BLUETOOTH_BLUE 0x041F  //tft.color565(0, 130, 252)
+
+void drawBluetoothLogo24( int x, int y ) {
+  const uint16_t bluetoothBlue = BLUETOOTH_BLUE;
+  return drawBluetoothLogo( x, y, 24, bluetoothBlue );
+}
+
 /**
  * Update the TFT display with step count and unsynced session count in a horizontal format.
  */
@@ -1195,36 +1234,35 @@ void runningScreen() {
     sprite.setTextDatum(TL_DATUM);
     sprite.fillScreen(TFT_BLACK);
     sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
+    
+    #ifdef OMNI_CONSOLE_MODE
+      drawBluetoothLogo(RES_X-12, 0, 24, consoleIsConnected ? BLUETOOTH_BLUE : TFT_DARKGREY);
+    #endif
 
     // Display Step Count (Large, Centered)
     sprite.setTextColor(TFT_WHITE, TFT_BLACK);
 
-    const int topLineHeight = 20;
+    const int topLineHeight = 24;
     const int botLineHeight = 35;
     const int botLineStartY = RES_Y-35;
 
-    //sprite.fillRect( (RES_X/2)-2, 0, 3, topLineHeight, TFT_CYAN);
-    sprite.pushImage(RES_X-19,0, 19, 32, bluetooth19x32);
-    
     sprite.setTextSize(2);
     sprite.setFreeFont(&AGENCYB22pt7b);
 
     sprite.setTextDatum(TC_DATUM);
-    sprite.drawString(String(steps), RES_X/2, topLineHeight);
 
-    //sprite.fillRect( (RES_X/2)-2, botLineStartY, 3, botLineHeight, TFT_CYAN);
+    if( isTreadmillActive ) {
+      sprite.drawString(String(steps), RES_X/2, topLineHeight);
+    }
+    else {
+      uint8_t stepsHeight = sprite.fontHeight();
+      sprite.drawString(String(getTodaysSteps()), RES_X/2, topLineHeight);
+      sprite.setFreeFont(0);
+      sprite.setTextColor(TFT_MAGENTA, TFT_BLACK);
+      sprite.setTextSize(2);
+      sprite.drawString(String("Steps Today"), RES_X/2, stepsHeight+1);
+    }
 
-
-    // sprite.setFreeFont(0);
-    // sprite.setTextColor(TFT_BLACK, TFT_MAGENTA);
-    // sprite.setTextSize(3);
-    // int sessionsStoredWidth = sprite.textWidth( String(sessionsStored) );
-    // int sessionsStoredHeight = sprite.fontHeight();
-    // int sessionsStoredX=5+(RES_X-sessionsStoredWidth);
-    // int sessionsStoredY=-1 + (RES_Y-(sessionsStoredHeight + 1));
-
-    // sprite.fillRect(sessionsStoredX-10, sessionsStoredY-2, 30, 30, 2, TFT_MAGENTA);
-    // sprite.drawString(String(sessionsStored), sessionsStoredX, sessionsStoredY);
     sprite.setFreeFont(0);
     sprite.setTextColor(TFT_DARKCYAN, TFT_BLACK);
     sprite.setTextSize(3);
@@ -1233,9 +1271,6 @@ void runningScreen() {
     int sessionsStoredX=RES_X-(5+sessionsStoredWidth);
     int sessionsStoredY=RES_Y-(sessionsStoredHeight + 5);
     sprite.drawString(String(sessionsStored), sessionsStoredX, sessionsStoredY);
-
-    // TODO remove me, this is for debug purposes.
-    sprite.drawString(String(neverRecvCIDCount), sessionsStoredX, sessionsStoredY-40); 
 
     // Display unsynced sessions in the bottom-right
     sprite.setFreeFont(0);
@@ -1246,8 +1281,8 @@ void runningScreen() {
     int toSyncHeight = sprite.fontHeight();
     int toSyncX=sessionsStoredX - (toSyncWidth + 5);
     int toSyncY=sessionsStoredY;
-    //sprite.drawString(String(toSyncText), toSyncX, toSyncY);
-    // Displays a red dot in lower left.
+
+    // Displays a red dot in upper right.
     if( isTreadmillActive && recordIndicator) {
       //sprite.fillCircle(10,110+5, 5, TFT_RED); // BOTTOM_LEFT LOCATION
       sprite.fillCircle(5,5, 5, TFT_RED); // TOP_RIGHT LOCATION
@@ -1264,12 +1299,15 @@ void clockScreen() {
     sprite.fillScreen(TFT_BLACK);
     sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
     sprite.setTextColor(TFT_WHITE, TFT_BLACK);
-   
+     
     sprite.setTextSize(1);
     sprite.setFreeFont(&AGENCYB22pt7b);    
     const int topLineHeight = 20;
     sprite.drawString(getFormattedTime(), RES_X/2, topLineHeight);
     sprite.setFreeFont(0);
+    sprite.setTextSize(2);
+       // TODO remove me, this is for debug purposes.
+    sprite.drawString(String(neverRecvCIDCount), RES_X-15, RES_Y-15); 
     sprite.drawString("UTC", RES_X/2, RES_Y-20);
     sprite.pushSprite(0,0);
 }
