@@ -6,7 +6,7 @@ struct StepData: Identifiable {
     let id = UUID()
     let date: Date
     let total: Double
-    let lifespanArduinoSteps: Double
+    let treadspanSteps: Double
     let lifespanFitSteps: Double
     let otherSteps: Double
     let label: String
@@ -104,7 +104,7 @@ struct MetricsView: View {
                     .font(.headline)
             }
             Text("Total Steps: \(Int(data.total))")
-            Text("  - Treadmill Steps: \(Int(data.lifespanArduinoSteps + data.lifespanFitSteps))")
+            Text("  - Treadmill Steps: \(Int(data.treadspanSteps + data.lifespanFitSteps))")
             Text("  - Other Steps: \(Int(data.otherSteps))")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -161,7 +161,7 @@ struct MetricsView: View {
             ForEach(stepData) { data in
                 BarMark(
                     x: .value("Time", data.label),
-                    y: .value("Steps", data.lifespanArduinoSteps)
+                    y: .value("Steps", data.treadspanSteps)
                 )
                 .foregroundStyle(Color.blue)
                 
@@ -262,19 +262,19 @@ struct MetricsView: View {
         
         // 1) total
         fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents) { totalSteps in
-            // 2) Arduino
-            fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "TreadSpan") { arduinoSteps in
+            // 2) Treadspan
+            fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "TreadSpan") { treadspanSteps in
                 // 3) Fit
                 fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifeSpan") { fitSteps in
                     DispatchQueue.main.async {
                         self.stepData = totalSteps.map { date, totalCount in
-                            let arduinoCount = arduinoSteps[date] ?? 0
+                            let treadspanCount = treadspanSteps[date] ?? 0
                             let fitCount = fitSteps[date] ?? 0
-                            let other = totalCount - (arduinoCount + fitCount)
+                            let other = totalCount - (treadspanCount + fitCount)
                             return StepData(
                                 date: date,
                                 total: totalCount,
-                                lifespanArduinoSteps: arduinoCount,
+                                treadspanSteps: treadspanCount,
                                 lifespanFitSteps: fitCount,
                                 otherSteps: other,
                                 label: formatLabel(date)
@@ -294,7 +294,7 @@ struct MetricsView: View {
         let startDate = calendar.date(byAdding: .day, value: -365, to: endDate)!
         
         let group = DispatchGroup()
-        var arduinoTotal = 0
+        var treadspanTotal = 0
         var fitTotal = 0
         
         group.enter()
@@ -304,7 +304,7 @@ struct MetricsView: View {
             components: DateComponents(day: 1),
             sourceName: "TreadSpan"
         ) { steps in
-            arduinoTotal = Int(steps.values.reduce(0, +))
+            treadspanTotal = Int(steps.values.reduce(0, +))
             group.leave()
         }
         
@@ -320,7 +320,7 @@ struct MetricsView: View {
         }
         
         group.notify(queue: .main) {
-            self.totalLifespanSteps365 = arduinoTotal + fitTotal
+            self.totalLifespanSteps365 = treadspanTotal + fitTotal
         }
     }
     
@@ -341,8 +341,13 @@ struct MetricsView: View {
                     return
                 }
                 
-                if let target = sources.first(where: { $0.name == sourceName }) {
-                    let srcPredicate = HKQuery.predicateForObjects(from: [target])
+                // TODO: Change sources.filter to sources.first.  Developer changed the bundle when submitting to appstore... it caused there to be multiple Treadspan sources which broke
+                //  graphs i want to take screenshots of.  So, changed to filter to include both.
+                let matchingSources = sources.filter { $0.name == sourceName }
+
+                if !matchingSources.isEmpty {
+                    // Use all matching sources instead of just the first one
+                    let srcPredicate = HKQuery.predicateForObjects(from: matchingSources)
                     predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [predicate, srcPredicate])
                 } else {
                     completion([:]) // No source found
@@ -523,7 +528,7 @@ struct MetricsView: View {
     // MARK: - Averages
     private func calculateDailyAverageAndTreadmillPercent() -> (Double, Double) {
         let totalSteps = stepData.reduce(0) { $0 + $1.total }
-        let treadmillSteps = stepData.reduce(0) { $0 + ($1.lifespanArduinoSteps + $1.lifespanFitSteps) }
+        let treadmillSteps = stepData.reduce(0) { $0 + ($1.treadspanSteps + $1.lifespanFitSteps) }
         let dayCount = stepData.count
         guard dayCount > 0 else { return (0, 0) }
         

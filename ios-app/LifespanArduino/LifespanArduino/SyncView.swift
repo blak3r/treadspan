@@ -16,12 +16,12 @@ struct SyncView: View {
                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                     .shadow(radius: 5)
 
-                Text("TreadSpan")
-                    .font(.system(.largeTitle, design: .default))
-                    .fontWeight(.heavy)
-                    .tracking(3)
-                    .textCase(.uppercase)
-              
+               Text("TreadSpan")
+                   .font(.system(.largeTitle, design: .default))
+                   .fontWeight(.heavy)
+                   .tracking(3)
+                   .textCase(.uppercase)
+
                 // Fetch/Save Sessions Button with busy indicator
                 Button(action: {
                     viewModel.fetchAndSaveSessions()
