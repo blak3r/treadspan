@@ -14,6 +14,9 @@ it'll sync all the sessions done prior.  (You don't have to sync each session in
 Prior to getting my lifespan, I used to have to remember to put my iphone in my pocket whenever i was on the treadmill so that my steps would get 
 counted.  A watch solution doesn't work since your arms are stationary. 
 
+[![youtube-thumbnail.png](screenshots/youtube-thumbnail.png)](https://youtu.be/KdCkAAa3uqI)
+
+
 ## Instructions
 
 1. Buy a ~$17 [supported chip](https://amzn.to/43eFNhn). (See Hardware section below for other options)
