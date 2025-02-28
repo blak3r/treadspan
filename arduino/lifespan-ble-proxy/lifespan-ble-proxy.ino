@@ -26,7 +26,7 @@
 //#define SESSION_SIMULATION_BUTTONS_ENABLED 1
 #define INCLUDE_IMPROV_SERIAL 1
 
-#define FW_VERSION "v0.9.2"
+#define FW_VERSION "v0.9.3"
 #ifndef LOAD_WIFI_CREDENTIALS_FROM_EEPROM
   const char* ssid = "Angela";
   const char* password = "iloveblake"; // Example guest network password for demonstration
@@ -924,7 +924,12 @@ unsigned long getTodaysSteps() {
     lastRecordedDate = today;
     totalStepsToday = 0;
   }
-  return totalStepsToday + steps;
+
+  if( isTreadmillActive ) {
+    return totalStepsToday + steps;
+  }
+
+  return totalStepsToday;
 }
 
 // ---------------------------------------------------------------------------
