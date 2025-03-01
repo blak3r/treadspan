@@ -179,15 +179,13 @@ struct MetricsView: View {
             }
         }
         .frame(height: 250)
-        
-        // 1) Drag gesture for navigation (swipe left/right)
+        // MARK: - Gestures remain unchanged
         .chartOverlay { _ in
             GeometryReader { geometry in
                 Rectangle().fill(Color.clear).contentShape(Rectangle())
                     .gesture(
                         DragGesture()
                             .onEnded { value in
-                                // If user swiped left or right enough, navigate
                                 let threshold: CGFloat = 50
                                 if value.translation.width > threshold {
                                     navigateDate(forward: false)
@@ -198,16 +196,12 @@ struct MetricsView: View {
                     )
             }
         }
-        
-        // 2) Another DragGesture with minimumDistance=0 to get tap location
-        //    (We do .onEnded so it behaves like a tap; you could do .onChanged if you want a "live crosshair.")
         .chartOverlay { proxy in
             GeometryReader { geometry in
                 Rectangle().fill(Color.clear).contentShape(Rectangle())
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onEnded { value in
-                                // Local X inside the chart's plot area
                                 let localX = value.location.x - geometry.frame(in: .local).origin.x
                                 if let index = getDataIndex(for: localX, width: geometry.size.width) {
                                     selectedBar = stepData[index]
@@ -216,24 +210,42 @@ struct MetricsView: View {
                     )
             }
         }
-        
-        // 3) If we want a vertical line for the selected bar, we draw it here
         .chartOverlay { proxy in
             if let selectedData = selectedBar {
-                // We find the x-position of the bar
                 if let idx = stepData.firstIndex(where: { $0.id == selectedData.id }) {
                     let stepWidth = proxy.plotAreaSize.width / CGFloat(stepData.count)
-                    // Center of that bar
                     let xPos = stepWidth * (CGFloat(idx) + 0.5)
-                    
                     GeometryReader { geo in
-                        // Draw a 1px wide vertical line
                         Rectangle()
                             .fill(Color.secondary)
-                            .frame(width: 1.0, height: geo.size.height) // use 1.0 not 1
+                            .frame(width: 1.0, height: geo.size.height)
                             .position(x: xPos, y: geo.size.height / 2)
                     }
                 }
+            }
+        }
+        // MARK: - Custom X-Axis
+        .chartXAxis {
+            if timeRange == .day {
+                AxisMarks(values: stepData.map(\.label)) { axisValue in
+                    if let labelValue = axisValue.as(String.self) {
+                        // Only show the four labels we want
+                        if labelValue == "12AM" ||
+                           labelValue == "6AM"  ||
+                           labelValue == "12PM" ||
+                           labelValue == "6PM" {
+                            AxisGridLine()
+                            AxisTick()
+                            AxisValueLabel {
+                                Text(labelValue)
+                                    .font(.caption2)   // Use a smaller font
+                                    .fixedSize()       // Prevent the text from compressing
+                            }
+                        }
+                    }
+                }
+            } else {
+                AxisMarks()
             }
         }
     }
@@ -260,27 +272,50 @@ struct MetricsView: View {
         isLoading = true
         let (startDate, endDate, intervalComponents) = getDateRange()
         
-        // 1) total
         fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents) { totalSteps in
-            // 2) Treadspan
             fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "TreadSpan") { treadspanSteps in
-                // 3) Fit
                 fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifeSpan") { fitSteps in
                     DispatchQueue.main.async {
-                        self.stepData = totalSteps.map { date, totalCount in
-                            let treadspanCount = treadspanSteps[date] ?? 0
-                            let fitCount = fitSteps[date] ?? 0
-                            let other = totalCount - (treadspanCount + fitCount)
-                            return StepData(
-                                date: date,
-                                total: totalCount,
-                                treadspanSteps: treadspanCount,
-                                lifespanFitSteps: fitCount,
-                                otherSteps: other,
-                                label: formatLabel(date)
-                            )
-                        }.sorted { $0.date < $1.date }
-                        
+                        let calendar = Calendar.current
+                        if timeRange == .day {
+                            // Build 24 hourly bins from midnight to midnight—even if zero steps
+                            let startOfDay = calendar.startOfDay(for: currentDate)
+                            var newData: [StepData] = []
+                            for hour in 0..<24 {
+                                let hourDate = calendar.date(byAdding: .hour, value: hour, to: startOfDay)!
+                                // Use the queried data if available, or default to 0.
+                                let totalCount = totalSteps[hourDate] ?? 0
+                                let treadspanCount = treadspanSteps[hourDate] ?? 0
+                                let fitCount = fitSteps[hourDate] ?? 0
+                                let other = totalCount - (treadspanCount + fitCount)
+                                newData.append(
+                                    StepData(
+                                        date: hourDate,
+                                        total: totalCount,
+                                        treadspanSteps: treadspanCount,
+                                        lifespanFitSteps: fitCount,
+                                        otherSteps: other,
+                                        label: formatLabel(hourDate)
+                                    )
+                                )
+                            }
+                            self.stepData = newData
+                        } else {
+                            // For non-day views, use the queried dates directly.
+                            self.stepData = totalSteps.map { date, totalCount in
+                                let treadspanCount = treadspanSteps[date] ?? 0
+                                let fitCount = fitSteps[date] ?? 0
+                                let other = totalCount - (treadspanCount + fitCount)
+                                return StepData(
+                                    date: date,
+                                    total: totalCount,
+                                    treadspanSteps: treadspanCount,
+                                    lifespanFitSteps: fitCount,
+                                    otherSteps: other,
+                                    label: formatLabel(date)
+                                )
+                            }.sorted { $0.date < $1.date }
+                        }
                         self.isLoading = false
                     }
                 }
@@ -341,12 +376,9 @@ struct MetricsView: View {
                     return
                 }
                 
-                // TODO: Change sources.filter to sources.first.  Developer changed the bundle when submitting to appstore... it caused there to be multiple Treadspan sources which broke
-                //  graphs i want to take screenshots of.  So, changed to filter to include both.
                 let matchingSources = sources.filter { $0.name == sourceName }
-
+                
                 if !matchingSources.isEmpty {
-                    // Use all matching sources instead of just the first one
                     let srcPredicate = HKQuery.predicateForObjects(from: matchingSources)
                     predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [predicate, srcPredicate])
                 } else {
@@ -413,7 +445,6 @@ struct MetricsView: View {
         switch timeRange {
         case .day:
             let start = calendar.startOfDay(for: now)
-            // clamp end so it never goes beyond “now”
             let endCandidate = calendar.date(byAdding: .day, value: 1, to: start)!
             return (start, min(endCandidate, Date()), DateComponents(hour: 1))
             
@@ -476,10 +507,9 @@ struct MetricsView: View {
     
     private func formatLabel(_ date: Date) -> String {
         let f = DateFormatter()
-        
         switch timeRange {
         case .day:
-            f.dateFormat = "ha"  // e.g. "1PM"
+            f.dateFormat = "ha"  // e.g. "12AM", "1AM", etc.
         case .week:
             f.dateFormat = "EEE" // e.g. "Mon"
         case .month:
@@ -515,7 +545,6 @@ struct MetricsView: View {
     }
     
     // MARK: - Tap/Gesture Helpers
-    /// Identify which bar index user tapped, so we can highlight it.
     private func getDataIndex(for xPosition: CGFloat, width: CGFloat) -> Int? {
         guard !stepData.isEmpty else { return nil }
         let stepWidth = width / CGFloat(stepData.count)
@@ -540,4 +569,10 @@ struct MetricsView: View {
     private func isTodayView() -> Bool {
         timeRange == .day && Calendar.current.isDateInToday(currentDate)
     }
+    
+    private let hourAmPmFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "h a" // e.g. "1 PM"
+        return f
+    }()
 }
