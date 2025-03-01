@@ -77,11 +77,7 @@ struct MetricsView: View {
             
             // The Chart
             chartView
-            
-            // Treadmill total steps over last 365
-            Text("Total Steps on Treadmill (last 365): \(totalLifespanSteps365)")
-                .font(.subheadline)
-            
+                       
             // Average steps & treadmill % if not “today (day)”
             if !isTodayView() {
                 let (avg, treadmillPercent) = calculateDailyAverageAndTreadmillPercent()
@@ -244,7 +240,24 @@ struct MetricsView: View {
                         }
                     }
                 }
-            } else {
+            } else if timeRange == .month {
+                // Filter labels to only include every 7th day
+                let weeklyLabels = stepData.enumerated()
+                    .filter { $0.offset % 7 == 0 }
+                    .map { $0.element.label }
+                
+                AxisMarks(values: weeklyLabels) { axisValue in
+                    if let label = axisValue.as(String.self) {
+                        AxisGridLine()
+                        AxisTick()
+                        AxisValueLabel {
+                            Text(label)
+                                .font(.caption2)
+                                .fixedSize()
+                        }
+                    }
+                }
+            }  else {
                 AxisMarks()
             }
         }
@@ -261,7 +274,6 @@ struct MetricsView: View {
                 hasPermission = success
                 if success {
                     fetchHealthData()
-                    fetchTotalLifespanSteps()
                 }
             }
         }
@@ -358,7 +370,7 @@ struct MetricsView: View {
             self.totalLifespanSteps365 = treadspanTotal + fitTotal
         }
     }
-    
+
     // MARK: - HK Query
     private func fetchStepsByInterval(
         start: Date,
@@ -489,7 +501,6 @@ struct MetricsView: View {
         }
         
         fetchHealthData()
-        fetchTotalLifespanSteps()
     }
     
     // MARK: - Formatting
