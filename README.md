@@ -173,6 +173,7 @@ control it through the mobile app (you would also need the more complicated hard
 
 ## TODOs (Things actively working on)
 HIGH
+- Finish the ESP32 Install Page.
 - Create a means to configure the WiFi (with a bluetooth)
 - ~~Make BLE code very robust.~~
 - ~~Make BLE session end detection more robust, had issues where it thought it was "unknown";~~
@@ -189,7 +190,7 @@ MED
 - WIFI Reconnect code on Arduino.
 
 LOW
-- Splash screen for TREADSPAN (mobile app)
+- ~~Splash screen for TREADSPAN (mobile app)~~
 - What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
 - Maybe increase eeprom size to allow for more sessions?
 - Change the Service UUIDs to be something less generic that could conflict.
