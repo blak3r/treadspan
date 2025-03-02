@@ -266,7 +266,7 @@ struct MetricsView: View {
                         }
                     }
                 }
-            case .month:
+            case .month, .sixMonth:
                 // Filter labels to only include every 7th day
                 let weeklyLabels = stepData.enumerated()
                     .filter { $0.offset % 7 == 0 }
