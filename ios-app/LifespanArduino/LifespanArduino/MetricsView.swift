@@ -32,6 +32,7 @@ struct MetricsView: View {
     @State private var isLoading = true
     @State private var hasPermission = false
     @State private var totalLifespanSteps365: Int = 0
+    @State private var hasNavigatedMonth = false
 
     enum TimeRange: String, CaseIterable {
         case day = "D"
@@ -536,11 +537,23 @@ struct MetricsView: View {
             let start = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now))!
             let endCandidate = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
             return (start, min(endCandidate, Date()), DateComponents(day: 1))
-
+            
         case .month:
-            let firstOfThisMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
-            let endCandidate = calendar.date(byAdding: .month, value: 1, to: firstOfThisMonth)!
-            return (firstOfThisMonth, min(endCandidate, Date()), DateComponents(day: 1))
+            let calendar = Calendar.current
+                if !hasNavigatedMonth && calendar.isDate(currentDate, inSameDayAs: Date()) {
+                    // We are viewing the *current* month for the first time.
+                    // Show last 30 days up to "today."
+                    let start = calendar.date(byAdding: .day, value: -30, to: currentDate) ?? currentDate
+                    let end = min(Date(), currentDate)  // just in case
+                    return (start, end, DateComponents(day: 1))
+                } else {
+                    // Normal: show the full month.
+                    let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month],
+                                                                from: currentDate))!
+                    let nextMonth    = calendar.date(byAdding: .month, value: 1, to: firstOfMonth)!
+                    // We’ll cap at ‘today’ if it’s the same month
+                    return (firstOfMonth, min(nextMonth, Date()), DateComponents(day: 1))
+                }
 
         case .sixMonth:
             // 6 months back from 'now'
@@ -560,20 +573,27 @@ struct MetricsView: View {
 
     private func navigateDate(forward: Bool) {
         let calendar = Calendar.current
-
+        
         switch timeRange {
         case .day:
             currentDate = calendar.date(byAdding: .day, value: forward ? 1 : -1, to: currentDate)!
+            
         case .week:
+            // shift the window by 7 days
             currentDate = calendar.date(byAdding: .day, value: forward ? 7 : -7, to: currentDate)!
+            
         case .month:
+            // If the user is pressing navigation, they've now "navigated"
+            hasNavigatedMonth = true
             currentDate = calendar.date(byAdding: .month, value: forward ? 1 : -1, to: currentDate)!
+            
         case .sixMonth:
-            currentDate = calendar.date(byAdding: .month, value: forward ? 6 : -6, to: currentDate)!
+            currentDate = calendar.date(byAdding: .month, value: forward ? 1 : -1, to: currentDate)!
+            
         case .year:
             currentDate = calendar.date(byAdding: .year, value: forward ? 1 : -1, to: currentDate)!
         }
-
+        
         fetchHealthData()
     }
 
