@@ -64,13 +64,14 @@ struct MetricsView: View {
     // MARK: - Main Data View
     private var dataView: some View {
         VStack(spacing: 16) {
+            
+            // Time-range buttons
+            timeRangeSelector
+
             // If user tapped a bar, show details
             if let selected = selectedBar {
                 selectedDataView(selected)
             }
-            
-            // Time-range buttons
-            timeRangeSelector
             
             // Arrows + date range text
             dateNavigator
