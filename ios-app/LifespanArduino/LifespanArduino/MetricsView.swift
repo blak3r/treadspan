@@ -4,11 +4,18 @@ import Charts
 
 struct StepData: Identifiable {
     let id = UUID()
-    let date: Date
+    
+    /// The bucket range for these steps
+    let startDate: Date
+    let endDate: Date
+    
+    /// Aggregated step counts
     let total: Double
     let treadspanSteps: Double
     let lifespanFitSteps: Double
     let otherSteps: Double
+    
+    /// For your Chart’s X-axis label
     let label: String
 }
 
@@ -16,7 +23,7 @@ struct MetricsView: View {
     // MARK: - HealthKit / Data
     private let healthStore = HKHealthStore()
     private let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-    
+
     // MARK: - UI State
     @State private var timeRange: TimeRange = .day
     @State private var currentDate = Date()
@@ -25,7 +32,7 @@ struct MetricsView: View {
     @State private var isLoading = true
     @State private var hasPermission = false
     @State private var totalLifespanSteps365: Int = 0
-    
+
     enum TimeRange: String, CaseIterable {
         case day = "D"
         case week = "W"
@@ -33,7 +40,7 @@ struct MetricsView: View {
         case sixMonth = "6M"
         case year = "Y"
     }
-    
+
     var body: some View {
         VStack(spacing: 16) {
             if !hasPermission {
@@ -48,7 +55,7 @@ struct MetricsView: View {
             requestHealthKitPermission()
         }
     }
-    
+
     // MARK: - Permission View
     private var permissionView: some View {
         VStack(spacing: 16) {
@@ -60,11 +67,11 @@ struct MetricsView: View {
             .buttonStyle(.borderedProminent)
         }
     }
-    
+
     // MARK: - Main Data View
     private var dataView: some View {
         VStack(spacing: 16) {
-            
+
             // Time-range buttons
             timeRangeSelector
 
@@ -72,13 +79,13 @@ struct MetricsView: View {
             if let selected = selectedBar {
                 selectedDataView(selected)
             }
-            
+
             // Arrows + date range text
             dateNavigator
-            
+
             // The Chart
             chartView
-                       
+
             // Average steps & treadmill % if not “today (day)”
             if !isTodayView() {
                 let (avg, treadmillPercent) = calculateDailyAverageAndTreadmillPercent()
@@ -88,16 +95,30 @@ struct MetricsView: View {
         }
         .padding()
     }
+
+    // Helper to display e.g. "Feb 24 - Mar 2"
+    private func formatDateRange(_ start: Date, to end: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        let startStr = f.string(from: start)
+        let endStr   = f.string(from: end)
+        return "\(startStr) - \(endStr)"
+    }
     
     private func selectedDataView(_ data: StepData) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             if timeRange == .day {
                 // For day view, show hour only
-                Text(formatHour(data.date))
+                Text(formatHour(data.startDate))
+                    .font(.headline)
+            } else if timeRange == .sixMonth {
+                // TODO remove one day from EndDate.
+                // Otherwise show the full range (e.g. "Feb 24 - Mar 2")
+                Text("\(formatDateRange(data.startDate, to: data.endDate))")
                     .font(.headline)
             } else {
                 // Otherwise show full date
-                Text(formatDate(data.date))
+                Text(formatDate(data.startDate))
                     .font(.headline)
             }
             Text("Total Steps: \(Int(data.total))")
@@ -109,7 +130,7 @@ struct MetricsView: View {
         .background(Color.gray.opacity(0.1))
         .cornerRadius(10)
     }
-    
+
     // MARK: - Time Range Selector
     private var timeRangeSelector: some View {
         HStack {
@@ -129,7 +150,7 @@ struct MetricsView: View {
             }
         }
     }
-    
+
     // MARK: - Date Navigator
     private var dateNavigator: some View {
         HStack {
@@ -138,12 +159,12 @@ struct MetricsView: View {
             } label: {
                 Image(systemName: "chevron.left")
             }
-            
+
             Spacer()
             Text(getDateRangeText())
                 .font(.headline)
             Spacer()
-            
+
             Button {
                 navigateDate(forward: true)
             } label: {
@@ -151,7 +172,7 @@ struct MetricsView: View {
             }
         }
     }
-    
+
     // MARK: - The Chart
     private var chartView: some View {
         Chart {
@@ -161,13 +182,13 @@ struct MetricsView: View {
                     y: .value("Steps", data.treadspanSteps)
                 )
                 .foregroundStyle(Color.blue)
-                
+
                 BarMark(
                     x: .value("Time", data.label),
                     y: .value("Steps", data.lifespanFitSteps)
                 )
                 .foregroundStyle(Color.green)
-                
+
                 BarMark(
                     x: .value("Time", data.label),
                     y: .value("Steps", data.otherSteps)
@@ -249,7 +270,7 @@ struct MetricsView: View {
                 let weeklyLabels = stepData.enumerated()
                     .filter { $0.offset % 7 == 0 }
                     .map { $0.element.label }
-                
+
                 AxisMarks(values: weeklyLabels) { axisValue in
                     if let label = axisValue.as(String.self) {
                         AxisGridLine()
@@ -267,13 +288,13 @@ struct MetricsView: View {
             }
         }
     }
-    
+
     // MARK: - Permissions
     private func requestHealthKitPermission() {
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
         let typesToRead: Set<HKObjectType> = [stepType]
         let typesToWrite: Set<HKSampleType> = []
-        
+
         healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead) { success, error in
             DispatchQueue.main.async {
                 hasPermission = success
@@ -283,19 +304,19 @@ struct MetricsView: View {
             }
         }
     }
-    
+
     // MARK: - Data Fetching
     private func fetchHealthData() {
         isLoading = true
         let (startDate, endDate, intervalComponents) = getDateRange()
-        
+
         // We'll fetch total steps, TreadSpan steps, and LifeSpan steps in parallel and combine.
         fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents) { totalStepsDict in
             fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "TreadSpan") { treadspanDict in
                 fetchStepsByInterval(start: startDate, end: endDate, components: intervalComponents, sourceName: "LifeSpan") { fitDict in
                     DispatchQueue.main.async {
                         let calendar = Calendar.current
-                        
+
                         // For day view: build 24 hourly bins from midnight to midnight
                         if timeRange == .day {
                             let startOfDay = calendar.startOfDay(for: currentDate)
@@ -308,7 +329,8 @@ struct MetricsView: View {
                                 let other = totalCount - (treadCount + fitCount)
                                 newData.append(
                                     StepData(
-                                        date: hourDate,
+                                        startDate: hourDate,
+                                        endDate: endDate,
                                         total: totalCount,
                                         treadspanSteps: treadCount,
                                         lifespanFitSteps: fitCount,
@@ -320,56 +342,56 @@ struct MetricsView: View {
                             self.stepData = newData
                         }
                         else {
-                            // For non-day views, just convert dictionaries into StepData arrays
-                            // and sort by date.
-                            
-                            // Combine all unique keys (startDates) from totalStepsDict
+                            // Example for non-day views
                             let allDates = Set(totalStepsDict.keys)
                                 .union(treadspanDict.keys)
                                 .union(fitDict.keys)
-                            
+
                             var combined: [StepData] = []
-                            
-                            for date in allDates {
-                                // If 6M or Y, the dictionary values are ALREADY storing "avg steps"
-                                // rather than total sum (see `executeStatsQuery`).
-                                let total = totalStepsDict[date] ?? 0
-                                let treadCount = treadspanDict[date] ?? 0
-                                let fitCount = fitDict[date] ?? 0
-                                let other = total - (treadCount + fitCount)
+                            for startDate in allDates {
+                                let total = totalStepsDict[startDate] ?? 0
+                                let tread = treadspanDict[startDate] ?? 0
+                                let fit   = fitDict[startDate] ?? 0
+                                let other = total - (tread + fit)
                                 
+                                // For a given stats bucket, the "endDate" is typically the next bucket's start,
+                                // or you can add the interval. But HKStatistics also gave us an 'endDate'
+                                // in the enumerate closure.
+                                // If you want exact endDate here, you could store that in a parallel dictionary
+                                // or structure. A simpler approach is to compute it from the interval:
+                                let endDate = Calendar.current.date(byAdding: intervalComponents, to: startDate) ?? startDate
+
                                 combined.append(
-                                    StepData(
-                                        date: date,
-                                        total: total,
-                                        treadspanSteps: treadCount,
-                                        lifespanFitSteps: fitCount,
-                                        otherSteps: other,
-                                        label: formatLabel(date)
-                                    )
+                                  StepData(
+                                    startDate: startDate,
+                                    endDate: endDate,
+                                    total: total,
+                                    treadspanSteps: tread,
+                                    lifespanFitSteps: fit,
+                                    otherSteps: other,
+                                    label: formatLabel(startDate)
+                                  )
                                 )
                             }
-                            
-                            // Sort by date ascending
-                            self.stepData = combined.sorted { $0.date < $1.date }
+                            self.stepData = combined.sorted { $0.startDate < $1.startDate }
                         }
-                        
+
                         self.isLoading = false
                     }
                 }
             }
         }
     }
-    
+
     private func fetchTotalLifespanSteps() {
         let calendar = Calendar.current
         let endDate = Date()
         let startDate = calendar.date(byAdding: .day, value: -365, to: endDate)!
-        
+
         let group = DispatchGroup()
         var treadspanTotal = 0.0
         var fitTotal = 0.0
-        
+
         group.enter()
         fetchStepsByInterval(
             start: startDate,
@@ -380,7 +402,7 @@ struct MetricsView: View {
             treadspanTotal = steps.values.reduce(0, +)
             group.leave()
         }
-        
+
         group.enter()
         fetchStepsByInterval(
             start: startDate,
@@ -391,13 +413,13 @@ struct MetricsView: View {
             fitTotal = steps.values.reduce(0, +)
             group.leave()
         }
-        
+
         group.notify(queue: .main) {
             // For daily intervals, we were storing total steps (not average)
             self.totalLifespanSteps365 = Int(treadspanTotal + fitTotal)
         }
     }
-    
+
     // MARK: - HK Query
     private func fetchStepsByInterval(
         start: Date,
@@ -408,7 +430,7 @@ struct MetricsView: View {
     ) {
         // Base predicate: from start to end
         var predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-        
+
         // If we need to filter by source
         if let sourceName = sourceName {
             let sourceQuery = HKSourceQuery(sampleType: stepType, samplePredicate: nil) { _, sourcesOrNil, error in
@@ -416,19 +438,19 @@ struct MetricsView: View {
                     completion([:])
                     return
                 }
-                
+
                 let matchingSources = sources.filter { $0.name == sourceName }
-                
+
                 // If no matching source, return empty
                 if matchingSources.isEmpty {
                     completion([:])
                     return
                 }
-                
+
                 // Combine the time-range predicate with a source predicate
                 let srcPredicate = HKQuery.predicateForObjects(from: matchingSources)
                 predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [predicate, srcPredicate])
-                
+
                 self.executeStatsQuery(
                     start: start,
                     end: end,
@@ -449,7 +471,7 @@ struct MetricsView: View {
             )
         }
     }
-    
+
     private func executeStatsQuery(
         start: Date,
         end: Date,
@@ -457,12 +479,11 @@ struct MetricsView: View {
         predicate: NSPredicate,
         completion: @escaping ([Date: Double]) -> Void
     ) {
-        // Create the query
         let query = HKStatisticsCollectionQuery(
             quantityType: stepType,
             quantitySamplePredicate: predicate,
             options: .cumulativeSum,
-            anchorDate: start, // anchor from the start
+            anchorDate: start,
             intervalComponents: intervalComponents
         )
         
@@ -475,26 +496,23 @@ struct MetricsView: View {
             var stepMap: [Date: Double] = [:]
             let calendar = Calendar.current
             
-            // Enumerate each bucket
             statsCollection.enumerateStatistics(from: start, to: end) { stats, _ in
                 if let sum = stats.sumQuantity() {
                     let totalSteps = sum.doubleValue(for: .count())
-                    // For partial intervals, find actual days in the bucket
-                    let startDate = stats.startDate
-                    let endDate = stats.endDate
-                    let dayCount = calendar.dateComponents([.day], from: startDate, to: endDate).day ?? 1
                     
-                    // If we're in 6M or Y, we want "average steps per day"
-                    // Otherwise, we use the total steps.
+                    // For partial intervals, count how many days are in this bucket
+                    let dayCount = calendar.dateComponents([.day],
+                                            from: stats.startDate, to: stats.endDate).day ?? 1
+                    
                     var value = totalSteps
                     if timeRange == .sixMonth || timeRange == .year {
-                        // Avoid dividing by zero if dayCount is 0
+                        // Use an average steps/day for large spans
                         let safeDays = max(1, dayCount)
                         value = totalSteps / Double(safeDays)
                     }
                     
-                    // We'll key by the bucket's startDate
-                    stepMap[startDate] = value
+                    // Use the *startDate* of the bucket as our dictionary key
+                    stepMap[stats.startDate] = value
                 }
             }
             completion(stepMap)
@@ -502,35 +520,35 @@ struct MetricsView: View {
         
         healthStore.execute(query)
     }
-    
+
     // MARK: - Date Range & Nav
     private func getDateRange() -> (Date, Date, DateComponents) {
         let calendar = Calendar.current
         let now = currentDate
-        
+
         switch timeRange {
         case .day:
             let start = calendar.startOfDay(for: now)
             let endCandidate = calendar.date(byAdding: .day, value: 1, to: start)!
             return (start, min(endCandidate, Date()), DateComponents(hour: 1))
-            
+
         case .week:
             let start = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now))!
             let endCandidate = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
             return (start, min(endCandidate, Date()), DateComponents(day: 1))
-            
+
         case .month:
             let firstOfThisMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
             let endCandidate = calendar.date(byAdding: .month, value: 1, to: firstOfThisMonth)!
             return (firstOfThisMonth, min(endCandidate, Date()), DateComponents(day: 1))
-            
+
         case .sixMonth:
             // 6 months back from 'now'
             let start = calendar.date(byAdding: .month, value: -6, to: now) ?? now
             let end = min(now, Date())
             // Each bar = 7-day period
             return (start, end, DateComponents(day: 7))
-            
+
         case .year:
             // 1 year back from 'now'
             let start = calendar.date(byAdding: .year, value: -1, to: now) ?? now
@@ -539,10 +557,10 @@ struct MetricsView: View {
             return (start, end, DateComponents(month: 1))
         }
     }
-    
+
     private func navigateDate(forward: Bool) {
         let calendar = Calendar.current
-        
+
         switch timeRange {
         case .day:
             currentDate = calendar.date(byAdding: .day, value: forward ? 1 : -1, to: currentDate)!
@@ -555,26 +573,26 @@ struct MetricsView: View {
         case .year:
             currentDate = calendar.date(byAdding: .year, value: forward ? 1 : -1, to: currentDate)!
         }
-        
+
         fetchHealthData()
     }
-    
+
     // MARK: - Formatting
     private func formatDate(_ date: Date) -> String {
         let f = DateFormatter()
         f.dateStyle = .medium
         return f.string(from: date)
     }
-    
+
     private func formatHour(_ date: Date) -> String {
         let f = DateFormatter()
         f.dateFormat = "h a"
         return f.string(from: date)
     }
-    
+
     private func formatLabel(_ date: Date) -> String {
         let f = DateFormatter()
-        
+
         switch timeRange {
         case .day:
             f.dateFormat = "ha"  // e.g. "12AM", "1AM", etc.
@@ -589,40 +607,40 @@ struct MetricsView: View {
             // Each bar is a month; show e.g. "MMM"
             f.dateFormat = "MMM"
         }
-        
+
         return f.string(from: date)
     }
-    
+
     private func getDateRangeText() -> String {
         let calendar = Calendar.current
         let f = DateFormatter()
-        
+
         switch timeRange {
         case .day:
             f.dateFormat = "MMMM d, yyyy"
             return f.string(from: currentDate)
-            
+
         case .week:
             f.dateFormat = "MMM d"
             let end = calendar.date(byAdding: .day, value: 6, to: currentDate)!
             return "\(f.string(from: currentDate)) - \(f.string(from: end))"
-            
+
         case .month:
             f.dateFormat = "MMMM yyyy"
             return f.string(from: currentDate)
-            
+
         case .sixMonth:
             f.dateFormat = "MMM d, yyyy"
             let start = calendar.date(byAdding: .month, value: -6, to: currentDate)!
             return "\(f.string(from: start)) - \(f.string(from: currentDate))"
-            
+
         case .year:
             f.dateFormat = "MMM d, yyyy"
             let start = calendar.date(byAdding: .year, value: -1, to: currentDate)!
             return "\(f.string(from: start)) - \(f.string(from: currentDate))"
         }
     }
-    
+
     // MARK: - Tap/Gesture Helpers
     private func getDataIndex(for xPosition: CGFloat, width: CGFloat) -> Int? {
         guard !stepData.isEmpty else { return nil }
@@ -632,23 +650,23 @@ struct MetricsView: View {
         index = max(0, min(index, stepData.count - 1))
         return index
     }
-    
+
     // MARK: - Averages
     private func calculateDailyAverageAndTreadmillPercent() -> (Double, Double) {
         let totalSteps = stepData.reduce(0) { $0 + $1.total }
         let treadmillSteps = stepData.reduce(0) { $0 + ($1.treadspanSteps + $1.lifespanFitSteps) }
         let dayCount = stepData.count
         guard dayCount > 0 else { return (0, 0) }
-        
+
         let average = totalSteps / Double(dayCount)
         let treadmillPercent = (treadmillSteps / totalSteps) * 100
         return (average, treadmillPercent)
     }
-    
+
     private func isTodayView() -> Bool {
         timeRange == .day && Calendar.current.isDateInToday(currentDate)
     }
-    
+
     private let hourAmPmFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "h a" // e.g. "1 PM"
