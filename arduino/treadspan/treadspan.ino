@@ -1273,7 +1273,7 @@ void runningScreen() {
     sprite.setTextSize(3);
     int sessionsStoredWidth = sprite.textWidth( String(sessionsStored) );
     int sessionsStoredHeight = sprite.fontHeight();
-    int sessionsStoredX=RES_X-(5+sessionsStoredWidth);
+    int sessionsStoredX=RES_X-(sessionsStoredWidth);
     int sessionsStoredY=RES_Y-(sessionsStoredHeight + 5);
     sprite.drawString(String(sessionsStored), sessionsStoredX, sessionsStoredY);
 
