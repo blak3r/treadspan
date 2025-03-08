@@ -1,12 +1,14 @@
 # TreadSpan (an alternative to LifeSpan Fit)
 
-Tracking your steps on a walking pad while working is tricky.  Your hands are stationary on your keyboard so conventional 
-step tracking like relying on your watch don't work.  Common workarounds are putting your phone in your pocket 
-or putting your watch on your ankle.  I didn't like either option as I frequently end up leaving my phone on my desk after
-answering a message and putting my watch on my ankle means giving up your watch and feeling like a convict on house arrest.
+Tracking your steps on a walking pad while working is challenging. With your hands fixed on the keyboard, 
+traditional step tracking—like relying on your watch—won’t work. Common workarounds include placing your phone in your 
+pocket or wearing your watch on your ankle. I didn't like either option as I frequently end up leaving my phone on 
+my desk after answering a message and putting my watch on my ankle means giving up your watch and feeling like a 
+convict on house arrest.
 
 When I upgraded my Treadmill, I purchased the [TR1200](https://amzn.to/4bbn8ok) from LifeSpan Fitness, in part 
-because the manufacturer had created a mobile app which would allow you to log your steps and it would integrate with HealthKit. 
+because the manufacturer had created a mobile app which would allow you to log your steps and it would integrate with
+Apple HealthKit. 
 It sounded like the perfect solution. But, unfortunately the implementation of their mobile app was poor to say the least.
 The biggest issue, was you had to open their clunky app to sync every session individually. 
 Anytime, I went to the bathroom, answered the door, or grabbed a snack, I'd have to open the app, stop my train of 
