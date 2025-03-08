@@ -1,10 +1,8 @@
 /*****************************************************************************
  * Treadmill Session Tracker on ESP32
  *
- * Changes:
- * 1) Instead of connecting to a fixed DEVICE_ADDRESS, we now scan for any
- *    device whose name starts with "LifeSpan-TM" and connect to the first found.
- * 2) In the main loop, if consoleIsConnected == false, we attempt to reconnect.
+ * Author: Blake Robertson
+ * License: MIT
  *****************************************************************************/
 
 #include <Arduino.h>
@@ -14,22 +12,41 @@
 #include <EEPROM.h>
 #include <sys/time.h>
 #include <time.h>
-#include <Wire.h>
+
+//-------------------------------------------------------------------------------------------------------------- //
+//----------------------------------[ CONFIGURATION SECTION ]--------------------------------------------------- //
+//-------------------------------------------------------------------------------------------------------------- //
+
+#define FW_VERSION "v0.9.4"
 
 #define ENABLE_DEBUG 1
-//#define LCD_ENABLED 1
-#define HAS_TFT_DISPLAY 1
-//#define RETRO_MODE 1        // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT.
+#define HAS_TFT_DISPLAY 1     // COMMENT if you aren't using the LilyGo Hardware.
+//#define RETRO_MODE 1        // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT (REQUIRES special hardware)
 #define OMNI_CONSOLE_MODE 1   // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA BLE (requires OMNI CONSOLE)
-#define VERBOSE_LOGGING 0
-#define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1 // 1 should be the default, if 1 it must of been flashed via the WEBINSTALLER,
+#define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1 // COMMENT if you want to provide credentials for wifi below (easier when developing)
+#define INCLUDE_IMPROV_SERIAL 1  // ALLOWS CONFIGURING WIFI THROUGH FLASH INSTALLER WEBPAGE
+#define VERBOSE_LOGGING 0     // Must be defined, change value to 1 to enable. Prints BLE/Serial Payloads to Port.
 //#define SESSION_SIMULATION_BUTTONS_ENABLED 1
-#define INCLUDE_IMPROV_SERIAL 1
+//#define LCD_4x20_ENABLED 1   // UNCOMMENT if you have a 4x20 I2C LCD Connected
 
-#define FW_VERSION "v0.9.3"
 #ifndef LOAD_WIFI_CREDENTIALS_FROM_EEPROM
   const char* ssid = "Angela";
   const char* password = "iloveblake"; // Example guest network password for demonstration
+#endif
+
+#ifdef RETRO_MODE
+  // RETRO VERSION UART CONFIGURATION
+  // I haven't tried these GPIO pins with Lily-go, when i built the retro version I had a Arduino ESP32 and these were
+  // pins i used.
+  #define RX1PIN 20  // A0, GPIO1, D17
+  #define TX1PIN 6   // NOT ACTUALLY NEEDED!
+  #define RX2PIN 23  // A2, GPIO3, D19
+  #define TX2PIN 8   // NOT ACTUALLY NEEDED
+#endif
+
+#ifdef SESSION_SIMULATION_BUTTONS_ENABLED
+  #define BUTTON_PIN 2 // D2  - Adds fake sessions on press
+  #define CLEAR_PIN  3 // D3  - Clears all sessions in EEPROM
 #endif
 
 
@@ -38,7 +55,8 @@
 //-------------------------------------------------------------------------------------------------------------- //
 
 // DEPENDENT LIBARIES
-#if LCD_ENABLED
+#ifdef LCD_4x20_ENABLED
+  #include <Wire.h>
   #include <LiquidCrystal_I2C.h>
   LiquidCrystal_I2C lcd(0x27,20,4);
 #endif
@@ -62,11 +80,6 @@
   #error "At least one must be defined: RETRO_MODE or OMNI_CONSOLE_MODE"
 #endif
 
-#ifdef SESSION_SIMULATION_BUTTONS_ENABLED
-  #define BUTTON_PIN 2 // D2
-  #define CLEAR_PIN  3 // D3  - Clears all sessions in EEPROM
-#endif
-
 // EEPROM Configuration
 #define EEPROM_SIZE             512
 #define MAX_SSID_LENGTH         32
@@ -78,88 +91,82 @@
 
 String getFormattedTimeWithMS(); // Forward Declaration
 
+// I'm not entirely sure this is needed.  I added this because I was having trouble getting ImprovWifi working so i added
+// this wrapper to be able to disable the Debug print statements.  Still kinda handy though.
 class DebugWrapper {
-public:
+  public:
   // Begin the underlying Serial if debugging is enabled.
   void begin(unsigned long baud) {
-#ifdef ENABLE_DEBUG
-    Serial.begin(baud);
-#endif
+    #ifdef ENABLE_DEBUG
+      Serial.begin(baud);
+    #endif
   }
 
   // Print with template overload.
   template<typename T>
   size_t print(const T &data) {
-#ifdef ENABLE_DEBUG
-    return Serial.print(data);
-#else
-    return 0;
-#endif
+    #ifdef ENABLE_DEBUG
+      return Serial.print(data);
+    #else
+      return 0;
+    #endif
   }
 
   template<typename T>
   size_t println(const T &data) {
-#ifdef ENABLE_DEBUG
-    return Serial.println(data);
-#else
-    return 0;
-#endif
+    #ifdef ENABLE_DEBUG
+      return Serial.println(data);
+    #else
+      return 0;
+    #endif
   }
 
   // Overload for println with no arguments.
   size_t println() {
-#ifdef ENABLE_DEBUG
-    return Serial.println();
-#else
-    return 0;
-#endif
+    #ifdef ENABLE_DEBUG
+      return Serial.println();
+    #else
+      return 0;
+    #endif
   }
 
   // A simple variadic printf implementation.
   int printf(const char* format, ...) {
-  #ifdef ENABLE_DEBUG
-    char buffer[256];  // Adjust buffer size as needed
-    va_list args;
-    va_start(args, format);
-    int ret = vsnprintf(buffer, sizeof(buffer), format, args);
-    va_end(args);
-    Serial.printf( "[%s] %s", getFormattedTimeWithMS(), buffer);
-    return ret;
-  #else
-    return 0;
-  #endif
+    #ifdef ENABLE_DEBUG
+      char buffer[256];  // Adjust buffer size as needed
+      va_list args;
+      va_start(args, format);
+      int ret = vsnprintf(buffer, sizeof(buffer), format, args);
+      va_end(args);
+      Serial.printf( "[%s] %s", getFormattedTimeWithMS(), buffer);
+      return ret;
+    #else
+      return 0;
+    #endif
   }
 
   // Overload for write (byte array)
   size_t write(const uint8_t *buffer, size_t size) {
-#ifdef ENABLE_DEBUG
-    return Serial.write(buffer, size);
-#else
-    return 0;
-#endif
+    #ifdef ENABLE_DEBUG
+      return Serial.write(buffer, size);
+    #else
+      return 0;
+    #endif
   }
 
   size_t write(uint8_t data) {
-#ifdef ENABLE_DEBUG
-    return Serial.write(data);
-#else
-    return 0;
-#endif
+    #ifdef ENABLE_DEBUG
+      return Serial.write(data);
+    #else
+      return 0;
+    #endif
   }
 };
 
 DebugWrapper Debug;
 
-
 #ifdef RETRO_MODE
   #include <HardwareSerial.h>
-
-  // RETRO VERSION UART CONFIGURATION
-  // TODO REDEFINE FOR LILY TFT
-  #define RX1PIN 20  // A0, GPIO1, D17
-  #define TX1PIN 6   // NOT ACTUALLY NEEDED!
-  #define RX2PIN 23  // A2, GPIO3, D19
-  #define TX2PIN 8   // NOT ACTUALLY NEEDED
 
   int shouldIUpdateCounter = 0;
   // Define the UART instances
@@ -479,9 +486,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     }
   }
 
-
   // Send read requests (hexStrings) in a round-robin fashion
-  
   void consoleBLEMainLoop() {
     // If console is not connected, try to reconnect periodically
     if (!consoleIsConnected) {
@@ -521,14 +526,13 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
         consoleCommandIndex = (consoleCommandIndex + 1) % CONSOLE_COMMAND_COUNT;
       }
-
     }
   }
 #endif
 
-// ---------------------------------------------------------------------------
-// LEDs / Indicators
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------------
+// LEDs / Indicators - Not really used anymore, depends on HW being Arduino ESP32
+// ------------------------------------------------------------------------------
 #define RED_LED 14
 #define BLUE_LED 15
 #define GREEN_LED 16
@@ -588,7 +592,7 @@ bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
 void screenWifiConnecting(void); // forward declaration
 
 bool connectWifi(const char *ssid, const char *password) {
-  #if LCD_ENABLED
+  #ifdef LCD_4x20_ENABLED
     lcd.clear();
     lcd.print("Connecting to WiFi");
   #endif
@@ -981,7 +985,7 @@ void simulateNewSession() {
 // ---------------------------------------------------------------------------
 // LCD
 // ---------------------------------------------------------------------------
-#if LCD_ENABLED
+#ifdef LCD_4x20_ENABLED
   String getCurrentSessionElapsed() {
     time_t now = time(nullptr);
     if (currentSession.start == 0 || now < currentSession.start) {
@@ -1081,13 +1085,13 @@ void IRAM_ATTR handleTopButtonInterrupt() {
 }
 
 volatile bool botButtonPressed = false;
-// volatile unsigned long lastDebounceTimeBot = 0;  // Track last button press time
+volatile unsigned long lastDebounceTimeBot = 0;  // Track last button press time
 void IRAM_ATTR handleBotButtonInterrupt() {
-    // unsigned long currentTime = millis();  // Get current time
-    // if (currentTime - lastDebounceTimeBot > debounceDelay) {  // Check if enough time has passed
-    //     botButtonPressed = true;
-    //     lastDebounceTimeBot = currentTime;  // Update debounce timer
-    // }
+    unsigned long currentTime = millis();  // Get current time
+    if (currentTime - lastDebounceTimeBot > debounceDelay) {  // Check if enough time has passed
+        botButtonPressed = true;
+        lastDebounceTimeBot = currentTime;  // Update debounce timer
+    }
 }
 
 void setupTFTDisplay() {
@@ -1329,15 +1333,16 @@ void updateTFTDisplay() {
   else if(WiFi.status() != WL_CONNECTED ) {
     noWifiScreen(2);
   }
-
-  switch(choice) {
-    case 0: runningScreen(); break;
-    case 1: splashScreen(); break;
-    case 2: noWifiScreen(0); break;
-    case 3: noWifiScreen(1); break;
-    case 4: clockScreen(); break;
-    default:
-      splashScreen();
+  else {
+    switch(choice) {
+      case 0: runningScreen(); break;
+      case 1: splashScreen(); break;
+      case 2: noWifiScreen(0); break; // REMOVE 
+      case 3: noWifiScreen(1); break; // REMOVE
+      case 4: clockScreen(); break;
+      default:
+        splashScreen();
+    }
   }
 }
 
@@ -1487,7 +1492,7 @@ void setup() {
   Serial.begin(115200);
   Debug.println("=== Treadmill Session Tracker (ESP32) ===");
 
-  #if LCD_ENABLED
+  #if LCD_4x20_ENABLED
     Wire.begin();
     Wire.setClock(400000);
     lcd.begin(20,4,LCD_5x8DOTS);
@@ -1510,10 +1515,6 @@ void setup() {
   // Initialize EEPROM
   EEPROM.begin(EEPROM_SIZE);
   printAllSessionsInEEPROM();
-
-  //const char* ssid = "Angela";
-  //const char* password = "iloveblake";
-  //saveWiFiCredentials(ssid, password);
 
   // WiFi + NTP
   setupWifi();
@@ -1540,8 +1541,6 @@ void setup() {
   pServer->setCallbacks(new MyServerCallbacks());
 
   NimBLEService* pService = pServer->createService(BLE_SERVICE_UUID);
-
-
 
   dataCharacteristic = pService->createCharacteristic(
       BLE_DATA_CHAR_UUID,
@@ -1612,7 +1611,7 @@ void loop() {
   // Non-blocking NTP check
   checkNtpUpdate();
 
-  #ifdef LCD_ENABLED
+  #ifdef LCD_4x20_ENABLED
     periodicLcdUpdateMainLoopHandler();
   #endif
 
