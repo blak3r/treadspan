@@ -17,7 +17,7 @@
 //----------------------------------[ CONFIGURATION SECTION ]--------------------------------------------------- //
 //-------------------------------------------------------------------------------------------------------------- //
 
-#define FW_VERSION "v0.9.4"
+#define FW_VERSION "v0.9.5"
 
 #define ENABLE_DEBUG 1
 #define HAS_TFT_DISPLAY 1     // COMMENT if you aren't using the LilyGo Hardware.
@@ -603,7 +603,7 @@ bool connectWifi(const char *ssid, const char *password) {
   unsigned long startTime = millis();
   while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < 7000) {
     #ifdef HAS_TFT_DISPLAY
-      screenWifiConnecting(ssid);
+      tftWifiConnectingScreen(ssid);
     #endif
     delay(100);
   }
@@ -1094,7 +1094,7 @@ void IRAM_ATTR handleBotButtonInterrupt() {
     }
 }
 
-void setupTFTDisplay() {
+void tftSetup() {
   #ifdef HAS_TFT_DISPLAY
     tft.init();
     delay(25);
@@ -1110,11 +1110,11 @@ void setupTFTDisplay() {
     attachInterrupt(digitalPinToInterrupt(TOP_BUTTON), handleTopButtonInterrupt, FALLING);
     attachInterrupt(digitalPinToInterrupt(BOT_BUTTON), handleBotButtonInterrupt, FALLING);
 
-    updateTFTDisplay(); // Initial display update
+    tftUpdateDisplay(); // Initial display update
   #endif
 }
 
-void splashScreen() {
+void tftSplashScreen() {
   sprite.setSwapBytes(true);
   sprite.setTextDatum(TL_DATUM);
   sprite.fillScreen(TFT_BLACK);
@@ -1147,7 +1147,7 @@ void splashScreen() {
   sprite.pushSprite(0,0);
 }
 
-void noWifiScreen(uint8_t configVsNotConnected) {
+void tftWifiStatusScreen(uint8_t configVsNotConnected) {
   sprite.setSwapBytes(true);
   sprite.setTextDatum(TL_DATUM);
   sprite.fillScreen(TFT_BLACK);
@@ -1168,7 +1168,7 @@ void noWifiScreen(uint8_t configVsNotConnected) {
   sprite.pushSprite(0,0);
 }
 
-void screenWifiConnecting(const char* ssid) {
+void tftWifiConnectingScreen(const char* ssid) {
   static uint8_t dotCounter = 0;
   sprite.setSwapBytes(true);
   sprite.fillScreen(TFT_BLACK);
@@ -1207,7 +1207,7 @@ void screenWifiConnecting(const char* ssid) {
  * @param sizeY - how big you want the icon such as 24 pixels high.
  * @param color - color, default is tft.color565(0, 130, 252);
  */
-void drawBluetoothLogo( int x, int y, int sizeY, uint32_t color) {
+void tftDrawBluetoothLogo( int x, int y, int sizeY, uint32_t color) {
   const uint16_t fullX = x+((14*sizeY)/32);
   const uint16_t centerX = x+(fullX-x)/2;
   const uint16_t x0 = x;
@@ -1226,15 +1226,15 @@ void drawBluetoothLogo( int x, int y, int sizeY, uint32_t color) {
 
 #define BLUETOOTH_BLUE 0x041F  //tft.color565(0, 130, 252)
 
-void drawBluetoothLogo24( int x, int y ) {
+void tftDrawBluetoothLogo24( int x, int y ) {
   const uint16_t bluetoothBlue = BLUETOOTH_BLUE;
-  return drawBluetoothLogo( x, y, 24, bluetoothBlue );
+  return tftDrawBluetoothLogo( x, y, 24, bluetoothBlue );
 }
 
 /**
  * Update the TFT display with step count and unsynced session count in a horizontal format.
  */
-void runningScreen() {
+void tftRunningScreen() {
     static bool recordIndicator = false;
     // Rotation = 2, puts usbc cable on right.
     // 240 horizontal
@@ -1245,7 +1245,7 @@ void runningScreen() {
     sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
     
     #ifdef OMNI_CONSOLE_MODE
-      drawBluetoothLogo(RES_X-12, 0, 24, consoleIsConnected ? BLUETOOTH_BLUE : TFT_DARKGREY);
+      tftDrawBluetoothLogo(RES_X-12, 0, 24, consoleIsConnected ? BLUETOOTH_BLUE : TFT_DARKGREY);
     #endif
 
     // Display Step Count (Large, Centered)
@@ -1301,7 +1301,7 @@ void runningScreen() {
     sprite.pushSprite(0,0);
 }
 
-void clockScreen() {
+void tftClockScreen() {
     static bool recordIndicator = false;
     sprite.setSwapBytes(true);
     sprite.setTextDatum(TC_DATUM);
@@ -1322,37 +1322,37 @@ void clockScreen() {
 }
 
 
-void updateTFTDisplay() {
+void tftUpdateDisplay() {
   uint8_t choice = tftPage % 5;
 
 //  Debug.printf("choice = %d, but: %d, bot: %d\n", choice, digitalRead(TOP_BUTTON), digitalRead(BOT_BUTTON) );
 
   if( !areWifiCredentialsSet ) {
-    noWifiScreen(1);
+    tftWifiStatusScreen(1);
   }
   else if(WiFi.status() != WL_CONNECTED ) {
-    noWifiScreen(2);
+    tftWifiStatusScreen(2);
   }
   else {
     switch(choice) {
-      case 0: runningScreen(); break;
-      case 1: splashScreen(); break;
-      case 2: noWifiScreen(0); break; // REMOVE 
-      case 3: noWifiScreen(1); break; // REMOVE
-      case 4: clockScreen(); break;
+      case 0: tftRunningScreen(); break;
+      case 1: tftSplashScreen(); break;
+      case 2: tftWifiStatusScreen(0); break; // REMOVE 
+      case 3: tftWifiStatusScreen(1); break; // REMOVE
+      case 4: tftClockScreen(); break;
       default:
-        splashScreen();
+        tftSplashScreen();
     }
   }
 }
 
 
-void periodicTftUpdateMainLoopHandler() {
+void tftPeriodicMainLoopHandler() {
     static unsigned long lastTftUpdate = 0;
     const unsigned long tftUpdateInterval = 1000; // 1 second
 
     if (millis() - lastTftUpdate >= tftUpdateInterval) {
-        updateTFTDisplay();
+        tftUpdateDisplay();
         lastTftUpdate = millis();
     }
 }
@@ -1502,7 +1502,7 @@ void setup() {
   #endif
 
   #ifdef HAS_TFT_DISPLAY
-    setupTFTDisplay();
+    tftSetup();
   #endif
 
   // Retro or Omni
@@ -1616,7 +1616,7 @@ void loop() {
   #endif
 
   #ifdef HAS_TFT_DISPLAY
-    periodicTftUpdateMainLoopHandler();
+    tftPeriodicMainLoopHandler();
   #endif
 
   #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
