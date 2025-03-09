@@ -511,7 +511,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
           for (int i = 0; i < sizeof(consoleCmdBuf); i++) {
             Debug.printf("%02X ", consoleCmdBuf[i]);
           }
-          Debug.print("\n");
+           Debug.print("\n");
         #endif
 
         if( !commandResponseReceived ) {
@@ -586,7 +586,10 @@ bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
     strncpy( passwordBuf, password, sizeof(ssidBuf));
     //Debug.println("Using SSID from Program Memory named: %s", ssid);
   #endif
-  return strlen(ssidBuf) > 0 && strlen(passwordBuf) > 0;
+
+  Debug.printf("ssidBuf[0]: %02X, len1 %d len2 %d\n", ssidBuf[0], strlen(ssidBuf), strlen(passwordBuf) );
+
+  return ssidBuf[0] != 0xFF && strlen(ssidBuf) > 0 && strlen(passwordBuf) > 0 && strlen(ssidBuf) < 31 && strlen(passwordBuf) < 31;
 }
 
 void screenWifiConnecting(void); // forward declaration
@@ -628,6 +631,8 @@ void setupWifi() {
   WiFi.onEvent(WiFiEvent);
 
   areWifiCredentialsSet = loadWifiCredentialsIntoBuffers(ssid, password); // loads from SSID/PASS from file system or program memory depending on build configs.
+
+  Debug.printf("areWifiCredentialsSet: %d\n", areWifiCredentialsSet );
 
   if( areWifiCredentialsSet ) {
     connectWifi(ssid, password);
@@ -888,6 +893,7 @@ void saveWiFiCredentials(const char* ssid, const char* password) {
 
   EEPROM.commit(); // Ensure data is written (needed for ESP8266/ESP32)
   Debug.println("WiFi creds saved to EEPROM");
+  areWifiCredentialsSet = true;
 }
 
 #ifdef INCLUDE_IMPROV_SERIAL
@@ -899,6 +905,7 @@ void saveWiFiCredentials(const char* ssid, const char* password) {
   void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
     Debug.println("IS: onImprovWiFiConnectedCb");
     saveWiFiCredentials(ssid, password);
+    areWifiCredentialsSet = true;
   }
 #endif
 
@@ -1064,12 +1071,7 @@ void simulateNewSession() {
 #define RES_X 240
 
 #include "icons.h"
-//#include "fonts.h"
-//#include "Teko_SemiBold28pt7b.h"
-//#include "Teko_SemiBold20pt7b.h"
 #include "AGENCYB22pt7b.h"
-//#include "AGENCYB20pt7b.h"
-//#include "AGENCYB18pt7b.h"
 
 volatile bool topButtonPressed = false;
 volatile uint8_t tftPage = 0;
@@ -1147,7 +1149,7 @@ void tftSplashScreen() {
   sprite.pushSprite(0,0);
 }
 
-void tftWifiStatusScreen(uint8_t configVsNotConnected) {
+void tftWifiStatusScreen(uint8_t configVsNotConnected, const char* ssid) {
   sprite.setSwapBytes(true);
   sprite.setTextDatum(TL_DATUM);
   sprite.fillScreen(TFT_BLACK);
@@ -1156,8 +1158,8 @@ void tftWifiStatusScreen(uint8_t configVsNotConnected) {
   sprite.setTextSize(2);
   sprite.setTextColor(TFT_WHITE, TFT_BLACK);
 
-  const char* wifi1 = configVsNotConnected == 0 ? "Configure WiFi" : "Unable to";
-  const char* wifi2 = configVsNotConnected == 0 ? "In Treadspan App" : "Connect";
+  const char* wifi1 = configVsNotConnected == 0 ? "Configure WiFi" : "Unable to Connect To:";
+  const char* wifi2 = configVsNotConnected == 0 ? "Using Web Installer" : ssid;
 
   int wifi1Width = sprite.textWidth(wifi1);
   int wifi2Width = sprite.textWidth(wifi2);
@@ -1328,17 +1330,19 @@ void tftUpdateDisplay() {
 //  Debug.printf("choice = %d, but: %d, bot: %d\n", choice, digitalRead(TOP_BUTTON), digitalRead(BOT_BUTTON) );
 
   if( !areWifiCredentialsSet ) {
-    tftWifiStatusScreen(1);
+    tftWifiStatusScreen(0, "");
   }
   else if(WiFi.status() != WL_CONNECTED ) {
-    tftWifiStatusScreen(2);
+    char tempSsidBuf[32], tempPasswordBuf[32];
+    loadWifiCredentialsIntoBuffers(tempSsidBuf, tempPasswordBuf );
+    tftWifiStatusScreen(1, tempSsidBuf);
   }
   else {
     switch(choice) {
       case 0: tftRunningScreen(); break;
       case 1: tftSplashScreen(); break;
-      case 2: tftWifiStatusScreen(0); break; // REMOVE 
-      case 3: tftWifiStatusScreen(1); break; // REMOVE
+      case 2: tftWifiStatusScreen(0,""); break; // REMOVE 
+      case 3: tftWifiStatusScreen(1,""); break; // REMOVE
       case 4: tftClockScreen(); break;
       default:
         tftSplashScreen();
