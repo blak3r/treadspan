@@ -29,13 +29,13 @@ for other treadmills over time and they can leverage the mobile app.
 
 ## Instructions
 
-1. Buy this [~$17 chip](https://amzn.to/43eFNhn). (See Hardware section for more options)
+1. Buy this [~$17 ESP32 Module](https://amzn.to/43eFNhn). (See Hardware section for more options)
 2. Install the [USB Serial drivers.](https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads)
-3. Load TreadSpan firmware, [using this web based installer](https://blak3r.github.io/treadspan-web-installer/).
+3. Load TreadSpan firmware / configure wifi, by [opening this page in Chrome](https://blak3r.github.io/treadspan-web-installer/). Support Video here: https://youtu.be/1UJMbb7URYI
 5. Install the "TreadSpan" app on your iOS Device from the AppStore.
 6. Open the app and follow instructions.
 
-After the firmware is loaded in step 3, you can disconnect the chip from your computer and can power it using any 
+After the firmware is loaded in step 3, you can disconnect the module from your computer and can power it using any 
 old USB-C cable/charger you have laying around.  You don't need to have it even visible on your desk, you could stuff it
 in a cable tray under your desk if you really wanted to. 
 
@@ -67,7 +67,7 @@ be helpful if you don't have wifi configured properly... or want to know how man
 
 ## Mobile App Features
 - It's a barebones application that fetches all logged sessions from the arduino module aka the chip and adds them to HealthKit.  It does this in one step, no need to do the sync to apple health separately.
-- It doesn't require you to login and create an account.  No information is shared.
+- It doesn't require you to create an account / login. No information is shared with 3rd Parties (other then Apple HealthKid)!
 - It also has some visualizations that are very similar to the step graphs in Apple Health but it'll break out steps taken on your treadmill  
   vs. steps logged organically through a watch or iphone.
 
@@ -105,13 +105,13 @@ The source code to the mobile app is available in the ios-app folder.
 
 1. Install Arduino IDE.
 2. Setup Arduino IDE for ESP32 support. See [this guide.](https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/)
-2. Open the treadspan.ino file in the arduino folder.
-3. You'll need to install these libraries:
+3. Open the treadspan.ino file in the arduino folder.
+4. You'll need to install these libraries:
    * Nimble (v2.2.1)
    * TFT_eSPI (2.5.43) - After you install this library, you'll have to edit User_Setup.h and User_Setup_Select.h as shown in [this image](/screenshots/TFT_eSPI_Setup.png).
-4. Default Upload Speed of 921600 would not work for me.  I'd get a packet error.  Goto `Tools->Upload Speed` and select `460800`
-5. Change the partition Scheme `Tools->Partition Scheme` to `Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)`
-6. Depending on your hardware edit `#define`'s at the top of the file. 
+5. Default Upload Speed of 921600 would not work for me.  I'd get a packet error.  Goto `Tools->Upload Speed` and select `460800`
+6. Change the partition Scheme `Tools->Partition Scheme` to `Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)`
+7. Depending on your hardware edit `#define`'s at the top of the file. 
 
 ### iOS Mobile App
 
@@ -174,23 +174,25 @@ control it through the mobile app (you would also need the more complicated hard
 
 ## TODOs (Things actively working on)
 HIGH
-- Add means of detecting if EEPROM is initialized. 
-- Finish the ESP32 Install Page.
-- Figure out the timeout preventing it from going directly into wifi setup.
-- Create a means to configure the WiFi (over BLE protocol in IOS App).
-- Make a setup video.
+- ~~Add means of detecting if EEPROM is initialized.~~
+- ~~Finish the ESP32 Install Page.~~
+- ~~Figure out the timeout preventing it from going directly into wifi setup.~~
+- ~~Make a setup video.~~
 - See if we can compress space down so partition scheme doesn't need modified.
-- Future proof the BLE protocol by adding a few additional options. 
-  - Payload Version
-  - Ability to include calories, average speed, etc if we wanted to log workouts also. 
+
 
 MED
 - WIFI Reconnect code on Arduino.
+- Future proof the BLE protocol by adding a few additional options.
+-- Payload Version
+-- Ability to include calories, average speed, etc if we wanted to log workouts also.
+-- Send time to device, Would be useful for an RTC based version.
 
 LOW
-- What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
-- Maybe increase eeprom size to allow for more sessions?
+- TEST: What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
+- Increase eeprom size to allow for more sessions?
 - Could further optimize the serial code to prevent losing commands... but i'm not sure it going to make a difference.
+- Create a means to configure the WiFi (over BLE protocol in IOS App).
 
 ## Get Help / Support
 
