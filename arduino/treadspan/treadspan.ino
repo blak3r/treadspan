@@ -200,6 +200,8 @@ bool wasTimeSet = false;
 static const char* BLE_SERVICE_UUID = "0000A51A-12BB-C111-1337-00099AACDEF0";
 static const char* BLE_DATA_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF1";
 static const char* BLE_CONFIRM_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF2";
+static const char* BLE_TIME_READ_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF3";  // NEW
+static const char* BLE_TIME_WRITE_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF4"; // NEW
 
 // BLE Peripheral Variables (modified for NimBLE)
 NimBLEServer* pServer = nullptr;
@@ -214,6 +216,10 @@ int sessionsStored = 0;
 bool clearedSessions = false;
 bool areWifiCredentialsSet = false;
 
+// NEW: Pointers to the new time characteristics
+NimBLECharacteristic* timeReadCharacteristic = nullptr;   // NEW
+NimBLECharacteristic* timeWriteCharacteristic = nullptr;  // NEW
+
 // COMMON STATE VARIABLES (RETRO / OMNI)
 int steps = 0;
 int calories = 0;         // only omni console mode.
@@ -226,7 +232,6 @@ boolean isTreadmillActive = 0;
 // NEW: Global variables for tracking today's steps
 String lastRecordedDate = "";       //YYYY-MM-DD
 unsigned long totalStepsToday = 0;  //
-
 TreadmillSession currentSession;
 
 
@@ -1311,7 +1316,6 @@ void tftRunningScreen(uint8_t primaryDisplayMetric) {
 
   // Displays a red dot in upper right.
   if (isTreadmillActive && recordIndicator) {
-    //sprite.fillCircle(10,110+5, 5, TFT_RED); // BOTTOM_LEFT LOCATION
     sprite.fillCircle(5, 5, 5, TFT_RED);  // TOP_RIGHT LOCATION
   }
   recordIndicator = !recordIndicator;
@@ -1382,7 +1386,6 @@ void tftPeriodicMainLoopHandler() {
 // ---------------------------------------------------------------------------
 // BLE Server Callbacks
 // ---------------------------------------------------------------------------
-// Modified Server Callbacks for NimBLE
 class MyServerCallbacks : public NimBLEServerCallbacks {
   /**
    * This onConnect is called when the mobile app connects to the main Service
@@ -1442,7 +1445,7 @@ class DataCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
 // ---------------------------------------------------------------------------
 void indicateNextSession();
 
-// Modified Characteristic Callbacks for NimBLE
+// Callback for the confirmation characteristic
 class ConfirmCallback : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
     std::string rawValue = pCharacteristic->getValue();
@@ -1456,6 +1459,42 @@ class ConfirmCallback : public NimBLECharacteristicCallbacks {
 
     if (rxValue.length() > 0 && rxValue[0] == 0x01) {
       indicateNextSession();
+    }
+  }
+};
+
+// NEW: Callback for reading the current system time
+class TimeReadCallbacks : public NimBLECharacteristicCallbacks { // NEW
+  void onRead(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+    Debug.printf("Entered timeRead\n");
+    time_t nowSec = time(nullptr);
+    uint32_t now32 = (uint32_t) nowSec;
+    // Convert to big-endian
+    uint8_t buffer[4];
+    buffer[0] = (uint8_t)((now32 >> 24) & 0xFF);
+    buffer[1] = (uint8_t)((now32 >> 16) & 0xFF);
+    buffer[2] = (uint8_t)((now32 >> 8) & 0xFF);
+    buffer[3] = (uint8_t)( now32 & 0xFF);
+    pCharacteristic->setValue(buffer, 4);
+  }
+};
+
+// NEW: Callback for writing the current system time
+class TimeWriteCallbacks : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+    Debug.printf("Entered timeWrite\n");
+    std::string rawValue = pCharacteristic->getValue();
+    if (rawValue.size() == 4) {
+      Debug.printf("Entered timeWrite2: %s\n", rawValue);
+      uint32_t newTime = ((uint8_t)rawValue[0] << 24) |
+                         ((uint8_t)rawValue[1] << 16) |
+                         ((uint8_t)rawValue[2] << 8)  |
+                         ((uint8_t)rawValue[3]);
+      struct timeval tv;
+      tv.tv_sec = newTime;
+      tv.tv_usec = 0;
+      settimeofday(&tv, NULL);
+      wasTimeSet = true;
     }
   }
 };
@@ -1525,7 +1564,6 @@ void setup() {
   tftSetup();
 #endif
 
-  // Retro or Omni
 #ifdef RETRO_MODE
   Debug.println("RETRO Serial Enabled");
   uart1.begin(4800, SERIAL_8N1, RX1PIN, TX1PIN);
@@ -1566,33 +1604,31 @@ void setup() {
     BLE_DATA_CHAR_UUID,
     NIMBLE_PROPERTY::NOTIFY);
   dataCharacteristic->setCallbacks(new DataCharacteristicCallbacks());
-  // AUTHOR NOTE: The NimBLE documentation regarding notify characteristics doesn't really make any sense to me.
-  // Seems like you do not need to do anything special for 2904 stuff the above is sufficient.
-  // Uncommenting the code below doesn't hurt anything but... isn't needed.
-  /**
-    *  2902 and 2904 descriptors are a special case, when createDescriptor is called with
-    *  either of those uuid's it will create the associated class with the correct properties
-    *  and sizes. However we must cast the returned reference to the correct type as the method
-    *  only returns a pointer to the base NimBLEDescriptor class.
-    */
-  //NimBLE2904* pBeef2904 = dataCharacteristic->create2904();
-  //pBeef2904->setFormat(NimBLE2904::FORMAT_UTF8);
-  //pBeef2904->setCallbacks(&dscCallbacks);
 
   confirmCharacteristic = pService->createCharacteristic(
     BLE_CONFIRM_CHAR_UUID,
     NIMBLE_PROPERTY::WRITE);
   confirmCharacteristic->setCallbacks(new ConfirmCallback());
 
+  // NEW: Create the Time-Read characteristic
+  timeReadCharacteristic = pService->createCharacteristic(
+    BLE_TIME_READ_CHAR_UUID,
+    NIMBLE_PROPERTY::READ
+  );
+  timeReadCharacteristic->setCallbacks(new TimeReadCallbacks());
+
+  // NEW: Create the Time-Write characteristic
+  timeWriteCharacteristic = pService->createCharacteristic(
+    BLE_TIME_WRITE_CHAR_UUID,
+    NIMBLE_PROPERTY::WRITE
+  );
+  timeWriteCharacteristic->setCallbacks(new TimeWriteCallbacks());
+
   pService->start();
 
   // Start advertising (Peripheral)
-  // Start advertising
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(BLE_SERVICE_UUID);
-  //pAdvertising->setScanResponse(true);
-  //pAdvertising->setMinPreferred(0x06);
-  //pAdvertising->setMaxPreferred(0x12);
   NimBLEDevice::startAdvertising();
   Debug.println("BLE Advertising started...");
 

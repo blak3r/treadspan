@@ -225,6 +225,12 @@ class BLEViewModel: NSObject, ObservableObject {
     private let dataCharUUID = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF1")
     private let confirmCharUUID = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF2")
 
+    // NEW TIME CHARACTERSITICS
+    private let timeReadCharUUID  = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF3") // NEW
+    private let timeWriteCharUUID = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF4") // NEW
+    private var timeReadCharacteristic: CBCharacteristic?
+    private var timeWriteCharacteristic: CBCharacteristic?
+
     // Temporary storage for fetched sessions
     private var fetchedSessions: [Session] = []
 
@@ -510,7 +516,7 @@ extension BLEViewModel: CBPeripheralDelegate {
 
         for service in services where service.uuid == serviceUUID {
             print("Found TreadSpan service, discovering characteristics...")
-            peripheral.discoverCharacteristics([dataCharUUID, confirmCharUUID], for: service)
+            peripheral.discoverCharacteristics([dataCharUUID, confirmCharUUID, timeReadCharUUID, timeWriteCharUUID], for: service)
         }
     }
 
@@ -527,12 +533,21 @@ extension BLEViewModel: CBPeripheralDelegate {
         for characteristic in characteristics {
             if characteristic.uuid == dataCharUUID {
                 dataCharacteristic = characteristic
-                peripheral.setNotifyValue(true, for: characteristic)
-                statusMessage = "Fetching sessions..."
-                print("Data characteristic found. Enabling notifications/indications.")
+                // COMMENT OUT subscription so we won't receive the 0xFF done marker until after time read:
+                // peripheral.setNotifyValue(true, for: characteristic)
+                // statusMessage = "Fetching sessions..."
+                // print("Data characteristic found. Enabling notifications/indications.")
+
             } else if characteristic.uuid == confirmCharUUID {
                 confirmCharacteristic = characteristic
                 print("Confirmation characteristic found.")
+            } else if characteristic.uuid == timeReadCharUUID {
+                timeReadCharacteristic = characteristic
+                peripheral.readValue(for: characteristic)
+                print("Time Read characteristic found. Reading device time...")
+            } else if characteristic.uuid == timeWriteCharUUID {
+                timeWriteCharacteristic = characteristic
+                print("Time Write characteristic found.")
             }
         }
     }
@@ -561,6 +576,33 @@ extension BLEViewModel: CBPeripheralDelegate {
         guard let value = characteristic.value else {
             print("No value for \(characteristic.uuid)")
             return
+        }
+
+        // NEW: Handle device time read
+        if characteristic.uuid == timeReadCharUUID {
+            let deviceEpoch = value.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
+            let phoneEpoch = UInt32(Date().timeIntervalSince1970)
+            let diff = Int(phoneEpoch) - Int(deviceEpoch)
+            print("Device time difference (seconds): \(diff)")
+            let absDiff = abs(diff)
+            if absDiff > 300 {
+                let minutesOff = absDiff / 60
+                self.statusMessage = "Device time is off by \(minutesOff) minutes. Session times may be inaccurate."
+            }
+            // Write phone time
+            if let timeWriteChar = timeWriteCharacteristic {
+                var phoneEpochBigEndian = phoneEpoch.bigEndian
+                let data = Data(bytes: &phoneEpochBigEndian, count: 4)
+                peripheral.writeValue(data, for: timeWriteChar, type: .withResponse)
+                print("Wrote current time to device.")
+            }
+
+            // NOW that we have read device time, let's subscribe to the data characteristic:
+            if let dataChar = dataCharacteristic {
+                peripheral.setNotifyValue(true, for: dataChar)
+                statusMessage = "Fetching sessions..."
+                print("Data characteristic found. Enabling notifications/indications.")
+            }
         }
 
         // If we see 0xFF => done (stop) marker
