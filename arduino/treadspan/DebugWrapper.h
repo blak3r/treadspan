@@ -1,7 +1,29 @@
-#ifndef DEBUG_WRAPPER_H
-#define DEBUG_WRAPPER_H
+#pragma once
 
 #include <Arduino.h>
+#include <sys/time.h>
+#include <time.h>
+
+String getFormattedTimeWithMS() {
+  time_t now = time(nullptr);
+  if (now < 100000) {
+    return "TBD, NTP sync";
+  }
+
+  // Use millis() to get the milliseconds component (note: millis() returns the time since program start)
+  unsigned long ms = millis() % 1000;
+
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  char buffer[40];
+  strftime(buffer, sizeof(buffer), "%H:%M:%S", &timeinfo);
+
+  char result[50];
+  snprintf(result, sizeof(result), "%s.%03lu", buffer, ms);
+
+  return String(result);
+}
 
 // I'm not entirely sure this is needed.  I added this because I was having trouble getting ImprovWifi working so i added
 // this wrapper to be able to disable the Debug print statements.  Turned out it wasn't the print statements that were interfering.
@@ -74,5 +96,3 @@ class DebugWrapper {
     #endif
   }
 };
-
-#endif

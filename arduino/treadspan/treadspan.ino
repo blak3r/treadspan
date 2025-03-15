@@ -16,6 +16,7 @@
 #include <sys/time.h>
 #include <time.h>
 
+
 //-------------------------------------------------------------------------------------------------------------- //
 //----------------------------------[ CONFIGURATION SECTION ]--------------------------------------------------- //
 //-------------------------------------------------------------------------------------------------------------- //
@@ -32,6 +33,8 @@
 //#define SESSION_SIMULATION_BUTTONS_ENABLED 1
 //#define LCD_4x20_ENABLED 1   // UNCOMMENT if you have a 4x20 I2C LCD Connected
 #define HAS_RTC_DS3231                 // UNCOMMENT if you have a hardware DS3231 RTC connected (purchased separately)
+
+
 
 
 #ifndef LOAD_WIFI_CREDENTIALS_FROM_EEPROM
@@ -85,6 +88,21 @@
   #error "At least one must be defined: RETRO_MODE or OMNI_CONSOLE_MODE"
 #endif
 
+#include "TreadmillDevice.h"
+#include "globals.h"
+
+TreadmillDevice *treadmillDevice = nullptr;
+
+#if defined(OMNI_CONSOLE_MODE) 
+  #include "LifespanOmniConsoleTreadmillDevice.h"
+  treadmillDevice  = new LifespanOmniConsoleTreadmillDevice();
+#elif defined(RETRO_MODE)
+  // TODO add impl here.
+#endif
+
+
+
+
 // I do not understand why, but this has to go above the RTC block or you'll get a lot of compilation errors about types.
 struct TreadmillSession {
   uint32_t start;
@@ -121,8 +139,6 @@ struct TreadmillSession {
 #define SESSIONS_START_INDEX 64
 #define MAX_SESSIONS ((512 - (64 + 4)) / 12)
 #define SESSION_SIZE_BYTES 12
-
-String getFormattedTimeWithMS();  // Forward Declaration
 
 
 #include "./DebugWrapper.h"
@@ -217,301 +233,6 @@ String lastRecordedDate = "";       //YYYY-MM-DD
 unsigned long totalStepsToday = 0;  //
 TreadmillSession currentSession;
 
-
-// Function to estimate speed in MPH based on integer value (common between retro and omni ble protocol)
-// TODO figure out how to do kph... but technically i'm only using this to display to a debug lcd so probably wouldn't bother.
-float estimate_mph(int value) {
-  return (0.00435 * value) - 0.009;
-}
-
-#ifdef OMNI_CONSOLE_MODE
-// We'll scan for devices whose name starts with this prefix
-#define CONSOLE_NAME_PREFIX "LifeSpan-TM"
-
-// UUIDs for the console's custom service/characteristics
-const char* CONSOLE_SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb";
-const char* CONSOLE_CHARACTERISTIC_UUID_FFF1 = "0000fff1-0000-1000-8000-00805f9b34fb";
-const char* CONSOLE_CHARACTERISTIC_UUID_FFF2 = "0000fff2-0000-1000-8000-00805f9b34fb";
-
-// BLE client references
-NimBLEClient* consoleClient = nullptr;
-NimBLERemoteCharacteristic* consoleNotifyCharacteristic = nullptr;
-NimBLERemoteCharacteristic* consoleWriteCharacteristic = nullptr;
-
-bool consoleIsConnected = false;
-int consoleCommandIndex = 0;
-static unsigned long lastConsoleCommandSentAt = 0;           // last time we requested a command
-const unsigned long consoleCommandUpdateIntervalMin = 300;   // Will send a new command after
-const unsigned long consoleCommandUpdateIntervalMax = 1400;  // Will wait for up to 1.2 seconds, found with 500 there were occassional commands that took longer.
-volatile uint8_t lastConsoleCommandIndex = 0;
-volatile uint8_t lastConsoleCommandOpcode = 0;
-volatile bool commandResponseReceived = true;
-volatile uint8_t neverRecvCIDCount = 0;
-volatile uint8_t timesSessionStatusHasBeenTheSame = 0;
-volatile uint8_t lastSessionStatus = -1;
-
-#define OPCODE_STEPS 0x88
-#define OPCODE_DURATION 0x89
-#define OPCODE_STATUS 0x91
-#define OPCODE_DISTANCE 0x85
-#define OPCODE_CALORIES 0x87
-#define OPCODE_SPEED 0x82
-
-// We want to get STATUS and STEPS more frequently so LCD updates quicker / sessions starting / stopping are detected faster.
-const uint8_t consoleCommandOrder[] = { OPCODE_STEPS, OPCODE_STATUS, OPCODE_DURATION, OPCODE_STATUS, OPCODE_DISTANCE,
-                                        OPCODE_STEPS, OPCODE_STATUS, OPCODE_CALORIES, OPCODE_STATUS, OPCODE_SPEED };
-#define CONSOLE_COMMAND_COUNT sizeof(consoleCommandOrder);
-
-// -----------------------------------------------------------------------
-// BLE Scan -> Look for "LifeSpan-TM"
-// -----------------------------------------------------------------------
-static NimBLEAddress foundConsoleAddress;  // = NimBLEAddress("");//nullptr; //TODO
-static bool foundConsole = false;
-
-/** Define a class to handle the callbacks when scan events are received */
-class ScanCallbacks : public NimBLEScanCallbacks {
-  void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
-    if (VERBOSE_LOGGING) { Debug.printf("Advertised Device found: %s\n", advertisedDevice->toString().c_str()); }
-    if (advertisedDevice->haveName() /* advertisedDevice->isAdvertisingService(NimBLEUUID(CONSOLE_SERVICE_UUID))*/) {
-      std::string devName = advertisedDevice->getName();
-      if (devName.rfind(CONSOLE_NAME_PREFIX, 0) == 0) {
-        Debug.printf("Found a 'LifeSpan' device at: %s\n", advertisedDevice->getAddress());
-        /** stop scan before connecting */
-        NimBLEDevice::getScan()->stop();
-        foundConsoleAddress = advertisedDevice->getAddress();
-        foundConsole = true;
-      }
-    }
-  }
-
-  /** Callback to process the results of the completed scan or restart it */
-  void onScanEnd(const NimBLEScanResults& results, int reason) override {
-    Debug.printf("Scan Ended, reason: %d, device count: %d; Restarting scan\n", reason, results.getCount());
-    NimBLEDevice::getScan()->start(1000, false, true);  // <-- this is important, not sure why the main loop reconnect doesn't work.
-  }
-} scanCallbacks;
-
-
-// Callback to handle incoming notifications from the console
-void consoleNotifyCallback(NimBLERemoteCharacteristic* pCharacteristic,
-                           uint8_t* data, size_t length, bool isNotify) {
-  #if VERBOSE_LOGGING
-    Debug.printf("RESP %02X: ", lastConsoleCommandIndex);
-    for (size_t i = 0; i < length; i++) {
-      Debug.printf("%02X ", data[i]);
-    }
-    Debug.print("\n");
-  #endif
-
-  // Parse the responses for each index
-  if (lastConsoleCommandOpcode == OPCODE_STEPS) {
-    steps = data[2] * 256 + data[3];
-    Debug.printf("Steps: %d\n", steps);
-  } else if (lastConsoleCommandOpcode == OPCODE_CALORIES) {
-    calories = data[2] * 256 + data[3];
-    Debug.printf("Calories: %d\n", calories);
-  } else if (lastConsoleCommandOpcode == OPCODE_DISTANCE) {
-    distance = data[2] * 256 + data[3];
-    Debug.printf("Distance: %d\n", distance);
-  } else if (lastConsoleCommandOpcode == OPCODE_SPEED) {
-    avgSpeedInt = data[2] * 256 + data[3];
-    avgSpeedFloat = estimate_mph(avgSpeedInt);
-    Debug.printf("AvgSpeedInt: %d, %.1f MPH\n", avgSpeedInt, avgSpeedFloat);
-  } else if (lastConsoleCommandOpcode == OPCODE_DURATION) {
-    Debug.printf("DURATION: %d:%d:%d\n", data[2], data[3], data[4]);
-    if (wasTimeSet) {
-      // Fixes issue where device powers on after a session on treadmill had started (or if time wasn't set when session started)
-      uint32_t sessionStartTime = (uint32_t)time(nullptr) - ((data[4]) + (data[3] * 60) + (data[2] * 60 * 60));
-      //Debug.printf("Updating sessionStartTime to: %lu\n", sessionStartTime);
-      currentSession.start = sessionStartTime;
-    }
-  } else if (lastConsoleCommandOpcode == OPCODE_STATUS) {
-    uint8_t status = data[2];
-    #define STATUS_RUNNING 3
-    #define STATUS_PAUSED 5
-    #define STATUS_SUMMARY_SCREEN 4
-    #define STATUS_STANDBY 1
-
-    // Encountered some strange behavior.  I think we were missing command responses from the console.  And this would cause us to
-    // interpret incorrectly a different command.  Causing us to stop sessions and immediately restart them.  I'm not only ending
-    // sessions if I get the same status at least twice.
-    if (lastSessionStatus == status) {
-      timesSessionStatusHasBeenTheSame += 1;
-    } else {
-      timesSessionStatusHasBeenTheSame = 0;
-    }
-    lastSessionStatus = status;
-
-    Debug.printf("Treadmill Status: ");
-
-    if (data[3] || data[4]) {
-      // Extra check to ensure we aren't processing like wrong command here. (These are otherwise always 0);
-      Debug.printf("Invalid CMD Resp for Status, [3]=%2X, [4]=%2X", data[3], data[4]);
-      commandResponseReceived = true;
-      return;
-    }
-    switch (status) {
-      case STATUS_RUNNING:
-        Debug.print("RUNNING\n");
-        if (!isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1) {
-          sessionStartedDetected();
-          isTreadmillActive = true;
-        }
-        break;
-      case STATUS_PAUSED:
-        Debug.print("PAUSED\n");
-        if (isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1) {
-          sessionEndedDetected();
-          isTreadmillActive = false;
-        }
-        break;
-      case STATUS_SUMMARY_SCREEN:
-        Debug.print("SUMMARY_SCREEN\n");
-        if (isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1) {
-          sessionEndedDetected();
-          isTreadmillActive = false;
-        }
-        break;
-      case STATUS_STANDBY:
-        Debug.print("STANDBY\n");
-        if (isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1) {
-          sessionEndedDetected();
-          isTreadmillActive = false;
-        }
-        break;
-      default:
-        Debug.printf("UNKNOWN: '%d'\n", status);
-    }
-  }
-  commandResponseReceived = true;
-}
-
-// Modified BLE Client Callback for NimBLE
-class MyClientCallback : public NimBLEClientCallbacks {
-  void onConnect(NimBLEClient* pclient) override {
-    Debug.println("Console client connected.");
-  }
-
-  void onDisconnect(NimBLEClient* pclient, int reason) override {
-    Debug.println(" !!! Console client disconnected.");
-    consoleIsConnected = false;
-  }
-};
-
-void connectToFoundConsole() {
-  consoleClient = NimBLEDevice::createClient();
-  consoleClient->setClientCallbacks(new MyClientCallback());
-
-  Debug.printf("Attempting to connect to: %s\n", foundConsoleAddress.toString().c_str());
-
-  if (!consoleClient->connect(foundConsoleAddress)) {
-    Debug.println("Failed to connect to LifeSpan console.");
-    consoleIsConnected = false;
-    return;
-  }
-
-  consoleIsConnected = true;
-  lastConsoleCommandSentAt = millis();
-  Debug.println("Connected to console. Discovering services...");
-
-  NimBLERemoteService* service = consoleClient->getService(CONSOLE_SERVICE_UUID);
-  if (service == nullptr) {
-    Debug.println("Failed to find FFF0 service. Disconnecting...");
-    consoleClient->disconnect();
-    consoleIsConnected = false;
-    return;
-  }
-
-  // FFF1: Notify characteristic
-  consoleNotifyCharacteristic = service->getCharacteristic(CONSOLE_CHARACTERISTIC_UUID_FFF1);
-  if (consoleNotifyCharacteristic == nullptr) {
-    Debug.println("Failed to find FFF1 characteristic. Disconnecting...");
-    consoleClient->disconnect();
-    consoleIsConnected = false;
-    return;
-  }
-
-  if (consoleNotifyCharacteristic->canNotify()) {
-    consoleNotifyCharacteristic->subscribe(true, consoleNotifyCallback);
-    Debug.println("Subbed to notifications on FFF1.");
-  }
-
-  // FFF2: Write characteristic
-  consoleWriteCharacteristic = service->getCharacteristic(CONSOLE_CHARACTERISTIC_UUID_FFF2);
-  if (!consoleWriteCharacteristic || !consoleWriteCharacteristic->canWrite()) {
-    Debug.println("FFF2 characteristic not found");
-    consoleClient->disconnect();
-    consoleIsConnected = false;
-    return;
-  }
-}
-
-// Public function to scan for "LifeSpan-TM" device & connect
-void connectToConsoleViaBLE() {
-  Debug.printf("Scanning for LifeSpan Omni Console...\n");
-
-  // Reset flags
-  foundConsole = false;
-  //foundConsoleAddress = NimBLEAddress(""); // TODO
-
-  NimBLEScan* pBLEScan = NimBLEDevice::getScan();
-  pBLEScan->setScanCallbacks(&scanCallbacks, false);
-  pBLEScan->setActiveScan(true);
-  pBLEScan->start(3, false);  // Scan for 1 second
-
-  // NimBLE requires a small delay after scanning
-  delay(50);
-
-  if (foundConsole) {
-    connectToFoundConsole();
-  } else {
-    Debug.println("No LifeSpan-TM device found in scan window.");
-  }
-}
-
-// Send read requests (hexStrings) in a round-robin fashion
-void consoleBLEMainLoop() {
-  // If console is not connected, try to reconnect periodically
-  if (!consoleIsConnected) {
-    static unsigned long lastTry = 0;
-    if (millis() - lastTry > 5000) {
-      lastTry = millis();
-      connectToConsoleViaBLE();
-    }
-  } else {
-    // If enough time has passed, send the next read request
-    uint32_t millisSinceLastCommandSentAt = millis() - lastConsoleCommandSentAt;
-    bool isItMoreThanMinUpdateInterval = (millisSinceLastCommandSentAt >= consoleCommandUpdateIntervalMin);
-    bool isItMoreThanMaxUpdateInterval = (millisSinceLastCommandSentAt >= consoleCommandUpdateIntervalMax);
-
-    if ((commandResponseReceived && isItMoreThanMinUpdateInterval) || isItMoreThanMaxUpdateInterval) {
-      lastConsoleCommandSentAt = millis();  // Reset timer
-
-      uint8_t consoleCmdBuf[] = { 0xA1, consoleCommandOrder[consoleCommandIndex], 0x00, 0x00, 0x00, 0x00 };
-
-      #if VERBOSE_LOGGING
-        Debug.printf("REQ %d: ", consoleCommandIndex);
-        for (int i = 0; i < sizeof(consoleCmdBuf); i++) {
-          Debug.printf("%02X ", consoleCmdBuf[i]);
-        }
-        Debug.print("\n");
-      #endif
-
-      if (!commandResponseReceived) {
-        Debug.printf("ERROR: Never RECV CID: %d, %2X\n", lastConsoleCommandIndex, lastConsoleCommandOpcode);
-        neverRecvCIDCount++;
-      }
-      Debug.printf("Wrote CID %d, %2X\n", consoleCommandIndex, consoleCommandOrder[consoleCommandIndex]);
-      consoleWriteCharacteristic->writeValue((uint8_t*)consoleCmdBuf, sizeof(consoleCmdBuf));
-      lastConsoleCommandIndex = consoleCommandIndex;
-      lastConsoleCommandOpcode = consoleCommandOrder[consoleCommandIndex];
-      commandResponseReceived = false;
-
-      consoleCommandIndex = (consoleCommandIndex + 1) % CONSOLE_COMMAND_COUNT;
-    }
-  }
-}
-#endif
 
 // ------------------------------------------------------------------------------
 // LEDs / Indicators - Not really used anymore, depends on HW being Arduino ESP32
@@ -687,27 +408,6 @@ String getFormattedTime() {
   return String(buffer);
 }
 
-
-String getFormattedTimeWithMS() {
-  time_t now = time(nullptr);
-  if (now < 100000) {
-    return "TBD, NTP sync";
-  }
-
-  // Use millis() to get the milliseconds component (note: millis() returns the time since program start)
-  unsigned long ms = millis() % 1000;
-
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
-
-  char buffer[40];
-  strftime(buffer, sizeof(buffer), "%H:%M:%S", &timeinfo);
-
-  char result[50];
-  snprintf(result, sizeof(result), "%s.%03lu", buffer, ms);
-
-  return String(result);
-}
 
 // ---------------------------------------------------------------------------
 // EEPROM Layout & Session Struct
@@ -1226,9 +926,7 @@ void tftRunningScreen(uint8_t primaryDisplayMetric) {
   sprite.fillScreen(TFT_BLACK);
   sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
 
-#ifdef OMNI_CONSOLE_MODE
-  tftDrawBluetoothLogo(RES_X - 12, 0, 24, consoleIsConnected ? BLUETOOTH_BLUE : TFT_DARKGREY);
-#endif
+  tftDrawBluetoothLogo(RES_X - 12, 0, 24, treadmillDevice->isConnected() ? BLUETOOTH_BLUE : TFT_DARKGREY);
 
   // Display Step Count (Large, Centered)
   sprite.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -1312,7 +1010,7 @@ void tftClockScreen() {
   sprite.setFreeFont(0);
   sprite.setTextSize(2);
   // TODO remove me, this is for debug purposes.
-  sprite.drawString(String(neverRecvCIDCount), RES_X - 15, RES_Y - 15);
+ // sprite.drawString(String(neverRecvCIDCount), RES_X - 15, RES_Y - 15);
   sprite.drawString("UTC", RES_X / 2, RES_Y - 20);
   sprite.pushSprite(0, 0);
 }
@@ -1521,34 +1219,34 @@ void setup() {
   Serial.begin(115200);
   Debug.println("=== Treadmill Session Tracker (ESP32) ===");
 
-#if LCD_4x20_ENABLED
-  Wire.begin();
-  Wire.setClock(400000);
-  lcd.begin(20, 4, LCD_5x8DOTS);
-  lcd.init();
-  lcd.clear();
-  lcd.backlight();
-#endif
+  #if LCD_4x20_ENABLED
+    Wire.begin();
+    Wire.setClock(400000);
+    lcd.begin(20, 4, LCD_5x8DOTS);
+    lcd.init();
+    lcd.clear();
+    lcd.backlight();
+  #endif
 
-#ifdef HAS_RTC_DS3231
-  if (!rtc.begin()) {
-    rtcFound = true;
-    Debug.println("RTC not found!");
-  } else {
-    rtcFound = true;
-    Debug.println("RTC initialized.");
-  }
-#endif
+  #ifdef HAS_RTC_DS3231
+    if (!rtc.begin()) {
+      rtcFound = true;
+      Debug.println("RTC not found!");
+    } else {
+      rtcFound = true;
+      Debug.println("RTC initialized.");
+    }
+  #endif
 
-#ifdef HAS_TFT_DISPLAY
-  tftSetup();
-#endif
+  #ifdef HAS_TFT_DISPLAY
+    tftSetup();
+  #endif
 
-#ifdef RETRO_MODE
-  Debug.println("RETRO Serial Enabled");
-  uart1.begin(4800, SERIAL_8N1, RX1PIN, TX1PIN);
-  uart2.begin(4800, SERIAL_8N1, RX2PIN, TX2PIN);
-#endif
+  #ifdef RETRO_MODE
+    Debug.println("RETRO Serial Enabled");
+    uart1.begin(4800, SERIAL_8N1, RX1PIN, TX1PIN);
+    uart2.begin(4800, SERIAL_8N1, RX2PIN, TX2PIN);
+  #endif
 
   // Initialize EEPROM
   EEPROM.begin(EEPROM_SIZE);
@@ -1557,13 +1255,11 @@ void setup() {
   // WiFi + NTP
   setupWifi();
 
-#ifdef SESSION_SIMULATION_BUTTONS_ENABLED
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-  pinMode(CLEAR_PIN, INPUT_PULLUP);
-
-  // Setup button interrupt
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
-#endif
+  #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    pinMode(CLEAR_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
+  #endif
 
   // Initialize NimBLE
   NimBLEDevice::init("TreadSpan");
@@ -1612,18 +1308,14 @@ void setup() {
   NimBLEDevice::startAdvertising();
   Debug.println("BLE Advertising started...");
 
-#ifdef OMNI_CONSOLE_MODE
-  // As a BLE client, we also want to scan for the console
-  // We'll do the initial connect attempt here:
-  connectToConsoleViaBLE();
-#endif
+  treadmillDevice->setupHandler();
 
-#ifdef INCLUDE_IMPROV_SERIAL
-  improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "My-Device-9a4c2b", FW_VERSION, "TreadSpan");
-  improvSerial.onImprovError(onImprovWiFiErrorCb);
-  improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
-  improvSerial.setCustomConnectWiFi(connectWifi);  // Optional
-#endif
+  #ifdef INCLUDE_IMPROV_SERIAL
+    improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "My-Device-9a4c2b", FW_VERSION, "TreadSpan");
+    improvSerial.onImprovError(onImprovWiFiErrorCb);
+    improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
+    improvSerial.setCustomConnectWiFi(connectWifi);  // Optional
+  #endif
   //   TreadmillSession tsession;
   //   tsession.start = 1739826223;
   //   tsession.stop = 1739831820;
@@ -1678,9 +1370,7 @@ void loop() {
     indicateNextSession();
   }
 
-  #ifdef OMNI_CONSOLE_MODE
-    consoleBLEMainLoop();
-  #endif
+  treadmillDevice->loopHandler();
 
   #ifdef RETRO_MODE
     retroModeMainLoopHandler();
