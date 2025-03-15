@@ -1,6 +1,9 @@
 /*****************************************************************************
  * Treadmill Session Tracker on ESP32
  *
+ * History:
+ * 2025-03-01 0.9.6
+ * 2026-03-15 1.0.7 - HW RTC Options, time setting via mobile app. 
  * Author: Blake Robertson
  * License: MIT
  *****************************************************************************/
@@ -17,7 +20,7 @@
 //----------------------------------[ CONFIGURATION SECTION ]--------------------------------------------------- //
 //-------------------------------------------------------------------------------------------------------------- //
 
-#define FW_VERSION "v0.9.6"
+#define FW_VERSION "v1.0.7"
 
 #define ENABLE_DEBUG 1
 #define HAS_TFT_DISPLAY 1  // COMMENT if you aren't using the LilyGo Hardware.
@@ -28,25 +31,27 @@
 #define VERBOSE_LOGGING 0                    // Must be defined, change value to 1 to enable. Prints BLE/Serial Payloads to Port.
 //#define SESSION_SIMULATION_BUTTONS_ENABLED 1
 //#define LCD_4x20_ENABLED 1   // UNCOMMENT if you have a 4x20 I2C LCD Connected
+#define HAS_RTC_DS3231                 // UNCOMMENT if you have a hardware DS3231 RTC connected (purchased separately)
+
 
 #ifndef LOAD_WIFI_CREDENTIALS_FROM_EEPROM
-const char* ssid = "Angela";
-const char* password = "iloveblake";  // Example guest network password for demonstration
+  const char* ssid = "Angela";
+  const char* password = "iloveblake";  // Example guest network password for demonstration
 #endif
 
 #ifdef RETRO_MODE
-// RETRO VERSION UART CONFIGURATION
-// I haven't tried these GPIO pins with Lily-go, when i built the retro version I had a Arduino ESP32 and these were
-// pins i used.
-#define RX1PIN 20  // A0, GPIO1, D17
-#define TX1PIN 6   // NOT ACTUALLY NEEDED!
-#define RX2PIN 23  // A2, GPIO3, D19
-#define TX2PIN 8   // NOT ACTUALLY NEEDED
+  // RETRO VERSION UART CONFIGURATION
+  // I haven't tried these GPIO pins with Lily-go, when i built the retro version I had a Arduino ESP32 and these were
+  // pins i used.
+  #define RX1PIN 20  // A0, GPIO1, D17
+  #define TX1PIN 6   // NOT ACTUALLY NEEDED!
+  #define RX2PIN 23  // A2, GPIO3, D19
+  #define TX2PIN 8   // NOT ACTUALLY NEEDED
 #endif
 
 #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
-#define BUTTON_PIN 2  // D2  - Adds fake sessions on press
-#define CLEAR_PIN 3   // D3  - Clears all sessions in EEPROM
+  #define BUTTON_PIN 2  // D2  - Adds fake sessions on press
+  #define CLEAR_PIN 3   // D3  - Clears all sessions in EEPROM
 #endif
 
 
@@ -54,31 +59,59 @@ const char* password = "iloveblake";  // Example guest network password for demo
 //----------------------------------[ DONT MODIFY BELOW THIS LINE ]--------------------------------------------- //
 //-------------------------------------------------------------------------------------------------------------- //
 
-// DEPENDENT LIBARIES
+// DEPENDENT LIBRARIES
 #ifdef LCD_4x20_ENABLED
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-LiquidCrystal_I2C lcd(0x27, 20, 4);
+  #include <Wire.h>
+  #include <LiquidCrystal_I2C.h>
+  LiquidCrystal_I2C lcd(0x27, 20, 4);
 #endif
 
 #if INCLUDE_IMPROV_SERIAL
-#include <ImprovWiFiLibrary.h>
-ImprovWiFi improvSerial(&Serial);
+  #include <ImprovWiFiLibrary.h>
+  ImprovWiFi improvSerial(&Serial);
 #endif
 
 #ifdef HAS_TFT_DISPLAY
-#include <SPI.h>
-#include <TFT_eSPI.h>
-TFT_eSPI tft = TFT_eSPI();
-TFT_eSprite sprite = TFT_eSprite(&tft);
+  #include <SPI.h>
+  #include <TFT_eSPI.h>
+  TFT_eSPI tft = TFT_eSPI();
+  TFT_eSprite sprite = TFT_eSprite(&tft);
 
-#define TOP_BUTTON 35
-#define BOT_BUTTON 0
+  #define TOP_BUTTON 35
+  #define BOT_BUTTON 0
 #endif
 
 #if !defined(RETRO_MODE) && !defined(OMNI_CONSOLE_MODE)
-#error "At least one must be defined: RETRO_MODE or OMNI_CONSOLE_MODE"
+  #error "At least one must be defined: RETRO_MODE or OMNI_CONSOLE_MODE"
 #endif
+
+// I do not understand why, but this has to go above the RTC block or you'll get a lot of compilation errors about types.
+struct TreadmillSession {
+  uint32_t start;
+  uint32_t stop;
+  uint32_t steps;
+};
+
+#ifdef HAS_RTC_DS3231 
+  #include "RTClib.h"
+  RTC_DS3231 rtc;
+  boolean rtcFound = false;
+  unsigned long lastRtcRetrieveTime = 0;
+  const unsigned long rtcRetrieveInterval = 10 * 60 * 1000; // 10 minutes in milliseconds
+  void setSystemTime(time_t); // forward declaration
+  void periodicRtcDS3231TimeRetriever() {
+    unsigned long currentMillis = millis();
+    // Check if 10 minutes have elapsed
+    if (rtcFound && (currentMillis - lastRtcRetrieveTime >= rtcRetrieveInterval)) {
+        lastRtcRetrieveTime = currentMillis; // Update last run time
+        DateTime now = rtc.now();
+        time_t unixTime = now.unixtime();
+        setSystemTime(unixTime);
+    }
+  }
+#endif
+
+
 
 // EEPROM Configuration
 #define EEPROM_SIZE 512
@@ -91,117 +124,67 @@ TFT_eSprite sprite = TFT_eSprite(&tft);
 
 String getFormattedTimeWithMS();  // Forward Declaration
 
-// I'm not entirely sure this is needed.  I added this because I was having trouble getting ImprovWifi working so i added
-// this wrapper to be able to disable the Debug print statements.  Turned out it wasn't the print statements that were interfering.
-class DebugWrapper {
-public:
-  // Begin the underlying Serial if debugging is enabled.
-  void begin(unsigned long baud) {
-#ifdef ENABLE_DEBUG
-    Serial.begin(baud);
-#endif
-  }
 
-  // Print with template overload.
-  template<typename T>
-  size_t print(const T& data) {
-#ifdef ENABLE_DEBUG
-    return Serial.print(data);
-#else
-    return 0;
-#endif
-  }
-
-  template<typename T>
-  size_t println(const T& data) {
-#ifdef ENABLE_DEBUG
-    return Serial.println(data);
-#else
-    return 0;
-#endif
-  }
-
-  // Overload for println with no arguments.
-  size_t println() {
-#ifdef ENABLE_DEBUG
-    return Serial.println();
-#else
-    return 0;
-#endif
-  }
-
-  // A simple variadic printf implementation.
-  int printf(const char* format, ...) {
-#ifdef ENABLE_DEBUG
-    char buffer[256];  // Adjust buffer size as needed
-    va_list args;
-    va_start(args, format);
-    int ret = vsnprintf(buffer, sizeof(buffer), format, args);
-    va_end(args);
-    Serial.printf("[%s] %s", getFormattedTimeWithMS(), buffer);
-    return ret;
-#else
-    return 0;
-#endif
-  }
-
-  // Overload for write (byte array)
-  size_t write(const uint8_t* buffer, size_t size) {
-#ifdef ENABLE_DEBUG
-    return Serial.write(buffer, size);
-#else
-    return 0;
-#endif
-  }
-
-  size_t write(uint8_t data) {
-#ifdef ENABLE_DEBUG
-    return Serial.write(data);
-#else
-    return 0;
-#endif
-  }
-};
-
+#include "./DebugWrapper.h"
 DebugWrapper Debug;
 
 #ifdef RETRO_MODE
-#include <HardwareSerial.h>
+  #include <HardwareSerial.h>
 
-int shouldIUpdateCounter = 0;
-// Define the UART instances
-HardwareSerial uart1(1);  // UART1 - RED = CONSOLE TX
-HardwareSerial uart2(2);  // UART2 - ORANGE = TREADMILL TX
-// Command buffers
-String uart1Buffer = "";
-String uart2Buffer = "";
-int uart1RxCnt = 0;
-int uart2RxCnt = 0;
-#define CMD_BUF_SIZE 10
-byte uart1Buf[CMD_BUF_SIZE];
-byte uart2Buf[CMD_BUF_SIZE];
-int lastRequestType;
-#define LAST_REQUEST_IS_STEPS 1
-#define LAST_REQUEST_IS_SPEED 2
-#define LAST_REQUEST_IS_DISTANCE 3
-#define LAST_REQUEST_IS_TIME 4
-#define STEPS_STARTSWITH "1 3 0 15"
-#define SPEED_STARTSWITH "1 6 0 10"
+  int shouldIUpdateCounter = 0;
+  // Define the UART instances
+  HardwareSerial uart1(1);  // UART1 - RED = CONSOLE TX
+  HardwareSerial uart2(2);  // UART2 - ORANGE = TREADMILL TX
+  // Command buffers
+  String uart1Buffer = "";
+  String uart2Buffer = "";
+  int uart1RxCnt = 0;
+  int uart2RxCnt = 0;
+  #define CMD_BUF_SIZE 10
+  byte uart1Buf[CMD_BUF_SIZE];
+  byte uart2Buf[CMD_BUF_SIZE];
+  int lastRequestType;
+  #define LAST_REQUEST_IS_STEPS 1
+  #define LAST_REQUEST_IS_SPEED 2
+  #define LAST_REQUEST_IS_DISTANCE 3
+  #define LAST_REQUEST_IS_TIME 4
+  #define STEPS_STARTSWITH "1 3 0 15"
+  #define SPEED_STARTSWITH "1 6 0 10"
 #endif
 
-struct TreadmillSession {
-  uint32_t start;
-  uint32_t stop;
-  uint32_t steps;
-};
+
 bool wasTimeSet = false;
+
+//------------------- COMMON TIME SETTING --------------------//
+/**
+ * This is called by NTP Update and by 
+ * the Mobile App during syncs via the BLE Time Write Characteristic
+ */
+void setSystemTime( time_t epochTime) {
+  #ifdef HAS_RTC_DS3231
+    DateTime dt(epochTime);
+    if( rtcFound ) {
+      rtc.adjust(dt);
+    }
+  #endif
+
+  struct timeval tv;
+  tv.tv_sec = epochTime;
+  tv.tv_usec = 0;
+  settimeofday(&tv, NULL);
+  Debug.print("System time updated: ");
+  Debug.println(getFormattedTime());
+
+  wasTimeSet = true;
+}
+
 
 // BLE UUIDs
 static const char* BLE_SERVICE_UUID = "0000A51A-12BB-C111-1337-00099AACDEF0";
 static const char* BLE_DATA_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF1";
 static const char* BLE_CONFIRM_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF2";
-static const char* BLE_TIME_READ_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF3";  // NEW
-static const char* BLE_TIME_WRITE_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF4"; // NEW
+static const char* BLE_TIME_READ_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF3";  
+static const char* BLE_TIME_WRITE_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF4"; 
 
 // BLE Peripheral Variables (modified for NimBLE)
 NimBLEServer* pServer = nullptr;
@@ -312,13 +295,13 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 // Callback to handle incoming notifications from the console
 void consoleNotifyCallback(NimBLERemoteCharacteristic* pCharacteristic,
                            uint8_t* data, size_t length, bool isNotify) {
-#if VERBOSE_LOGGING
-  Debug.printf("RESP %02X: ", lastConsoleCommandIndex);
-  for (size_t i = 0; i < length; i++) {
-    Debug.printf("%02X ", data[i]);
-  }
-  Debug.print("\n");
-#endif
+  #if VERBOSE_LOGGING
+    Debug.printf("RESP %02X: ", lastConsoleCommandIndex);
+    for (size_t i = 0; i < length; i++) {
+      Debug.printf("%02X ", data[i]);
+    }
+    Debug.print("\n");
+  #endif
 
   // Parse the responses for each index
   if (lastConsoleCommandOpcode == OPCODE_STEPS) {
@@ -344,10 +327,10 @@ void consoleNotifyCallback(NimBLERemoteCharacteristic* pCharacteristic,
     }
   } else if (lastConsoleCommandOpcode == OPCODE_STATUS) {
     uint8_t status = data[2];
-#define STATUS_RUNNING 3
-#define STATUS_PAUSED 5
-#define STATUS_SUMMARY_SCREEN 4
-#define STATUS_STANDBY 1
+    #define STATUS_RUNNING 3
+    #define STATUS_PAUSED 5
+    #define STATUS_SUMMARY_SCREEN 4
+    #define STATUS_STANDBY 1
 
     // Encountered some strange behavior.  I think we were missing command responses from the console.  And this would cause us to
     // interpret incorrectly a different command.  Causing us to stop sessions and immediately restart them.  I'm not only ending
@@ -506,13 +489,13 @@ void consoleBLEMainLoop() {
 
       uint8_t consoleCmdBuf[] = { 0xA1, consoleCommandOrder[consoleCommandIndex], 0x00, 0x00, 0x00, 0x00 };
 
-#if VERBOSE_LOGGING
-      Debug.printf("REQ %d: ", consoleCommandIndex);
-      for (int i = 0; i < sizeof(consoleCmdBuf); i++) {
-        Debug.printf("%02X ", consoleCmdBuf[i]);
-      }
-      Debug.print("\n");
-#endif
+      #if VERBOSE_LOGGING
+        Debug.printf("REQ %d: ", consoleCommandIndex);
+        for (int i = 0; i < sizeof(consoleCmdBuf); i++) {
+          Debug.printf("%02X ", consoleCmdBuf[i]);
+        }
+        Debug.print("\n");
+      #endif
 
       if (!commandResponseReceived) {
         Debug.printf("ERROR: Never RECV CID: %d, %2X\n", lastConsoleCommandIndex, lastConsoleCommandOpcode);
@@ -579,13 +562,13 @@ void loadWiFiCredentialsFromEEPROM(char* ssid, char* password) {
 }
 
 bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
-#if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
-  loadWiFiCredentialsFromEEPROM(ssidBuf, passwordBuf);
-#else
-  strncpy(ssidBuf, ssid, sizeof(ssidBuf));  // Developer mode... ssid/password are hardcoded.
-  strncpy(passwordBuf, password, sizeof(ssidBuf));
-  //Debug.println("Using SSID from Program Memory named: %s", ssid);
-#endif
+  #if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
+    loadWiFiCredentialsFromEEPROM(ssidBuf, passwordBuf);
+  #else
+    strncpy(ssidBuf, ssid, sizeof(ssidBuf));  // Developer mode... ssid/password are hardcoded.
+    strncpy(passwordBuf, password, sizeof(ssidBuf));
+    //Debug.println("Using SSID from Program Memory named: %s", ssid);
+  #endif
 
   Debug.printf("ssidBuf[0]: %02X, len1 %d len2 %d\n", ssidBuf[0], strlen(ssidBuf), strlen(passwordBuf));
 
@@ -595,19 +578,19 @@ bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
 void screenWifiConnecting(void);  // forward declaration
 
 bool connectWifi(const char* ssid, const char* password) {
-#ifdef LCD_4x20_ENABLED
-  lcd.clear();
-  lcd.print("Connecting to WiFi");
-#endif
+  #ifdef LCD_4x20_ENABLED
+    lcd.clear();
+    lcd.print("Connecting to WiFi");
+  #endif
 
   Debug.printf("Connecting to WiFi... %s\n", ssid);
   WiFi.begin(ssid, password);
 
   unsigned long startTime = millis();
   while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < 7000) {
-#ifdef HAS_TFT_DISPLAY
-    tftWifiConnectingScreen(ssid);
-#endif
+    #ifdef HAS_TFT_DISPLAY
+      tftWifiConnectingScreen(ssid);
+    #endif
     delay(100);
   }
 
@@ -676,17 +659,8 @@ void checkNtpResponse() {
     unsigned long lowWord = word(ntpPacketBuffer[42], ntpPacketBuffer[43]);
     time_t epochTime = (highWord << 16 | lowWord) - 2208988800UL;  // Convert to UNIX time
 
-    // Set system time
-    struct timeval tv;
-    tv.tv_sec = epochTime;
-    tv.tv_usec = 0;
-    settimeofday(&tv, NULL);
-
-    Debug.print("System time updated: ");
-    Debug.println(getFormattedTime());
-
     ntpUpdateInterval = 600000;  // set to 10 minutes after first success
-    wasTimeSet = true;
+    setSystemTime(epochTime);
   }
 }
 
@@ -1222,7 +1196,7 @@ void tftDrawBluetoothLogo(int x, int y, int sizeY, uint32_t color) {
   sprite.drawLine(centerX, y0, fullX, y1, color);       //Small line top of B
   sprite.drawLine(centerX, fullY, fullX, y2, color);    // Small Line, Bottom of B
 
-  Debug.printf("fullX=%d, centerX=%d, y1=%d, y2=%d, fullY=%d, 0x%4X\n", fullX, centerX, y1, y2, fullY, color);
+  //Debug.printf("fullX=%d, centerX=%d, y1=%d, y2=%d, fullY=%d, 0x%04X\n", fullX, centerX, y1, y2, fullY, color);
 }
 
 #define BLUETOOTH_BLUE 0x041F  //tft.color565(0, 130, 252)
@@ -1486,15 +1460,11 @@ class TimeWriteCallbacks : public NimBLECharacteristicCallbacks {
     std::string rawValue = pCharacteristic->getValue();
     if (rawValue.size() == 4) {
       Debug.printf("Entered timeWrite2: %s\n", rawValue);
-      uint32_t newTime = ((uint8_t)rawValue[0] << 24) |
+      time_t newTime = ((uint8_t)rawValue[0] << 24) |
                          ((uint8_t)rawValue[1] << 16) |
                          ((uint8_t)rawValue[2] << 8)  |
                          ((uint8_t)rawValue[3]);
-      struct timeval tv;
-      tv.tv_sec = newTime;
-      tv.tv_usec = 0;
-      settimeofday(&tv, NULL);
-      wasTimeSet = true;
+      setSystemTime(newTime);
     }
   }
 };
@@ -1558,6 +1528,16 @@ void setup() {
   lcd.init();
   lcd.clear();
   lcd.backlight();
+#endif
+
+#ifdef HAS_RTC_DS3231
+  if (!rtc.begin()) {
+    rtcFound = true;
+    Debug.println("RTC not found!");
+  } else {
+    rtcFound = true;
+    Debug.println("RTC initialized.");
+  }
 #endif
 
 #ifdef HAS_TFT_DISPLAY
@@ -1656,38 +1636,40 @@ void setup() {
 // ---------------------------------------------------------------------------
 void loop() {
 
-#ifdef INCLUDE_IMPROV_SERIAL
-//asd
-#warning "handle serial is live"
-  improvSerial.handleSerial();
-#endif
+  #ifdef INCLUDE_IMPROV_SERIAL
+    improvSerial.handleSerial();
+  #endif
 
   // Non-blocking NTP check
   checkNtpUpdate();
 
-#ifdef LCD_4x20_ENABLED
-  periodicLcdUpdateMainLoopHandler();
-#endif
+  #ifdef HAS_RTC_DS3231
+    periodicRtcDS3231TimeRetriever();
+  #endif
 
-#ifdef HAS_TFT_DISPLAY
-  tftPeriodicMainLoopHandler();
-#endif
+  #ifdef LCD_4x20_ENABLED
+    periodicLcdUpdateMainLoopHandler();
+  #endif
 
-#ifdef SESSION_SIMULATION_BUTTONS_ENABLED
-  // Check button press
-  if (buttonPressed) {
-    buttonPressed = false;
-    simulateNewSession();  // For dev testing only
-  }
+  #ifdef HAS_TFT_DISPLAY
+    tftPeriodicMainLoopHandler();
+  #endif
 
-  // Clear sessions if CLEAR_PIN is LOW (do once)
-  if (!clearedSessions && digitalRead(CLEAR_PIN) == LOW) {
-    Debug.println("CLEAR_PIN is LOW, clearing all sessions...");
-    setSessionCountInEEPROM(0);
-    EEPROM.commit();
-    clearedSessions = true;
-  }
-#endif
+  #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
+    // Check button press
+    if (buttonPressed) {
+      buttonPressed = false;
+      simulateNewSession();  // For dev testing only
+    }
+
+    // Clear sessions if CLEAR_PIN is LOW (do once)
+    if (!clearedSessions && digitalRead(CLEAR_PIN) == LOW) {
+      Debug.println("CLEAR_PIN is LOW, clearing all sessions...");
+      setSessionCountInEEPROM(0);
+      EEPROM.commit();
+      clearedSessions = true;
+    }
+  #endif
 
   if (isMobileAppConnected && isMobileAppSubscribed && !haveNotifiedMobileAppOfFirstSession) {
     haveNotifiedMobileAppOfFirstSession = true;
@@ -1696,13 +1678,13 @@ void loop() {
     indicateNextSession();
   }
 
-#ifdef OMNI_CONSOLE_MODE
-  consoleBLEMainLoop();
-#endif
+  #ifdef OMNI_CONSOLE_MODE
+    consoleBLEMainLoop();
+  #endif
 
-#ifdef RETRO_MODE
-  retroModeMainLoopHandler();
-#endif
+  #ifdef RETRO_MODE
+    retroModeMainLoopHandler();
+  #endif
 
   delay(1);
 }
