@@ -2,8 +2,8 @@
  * Treadmill Session Tracker on ESP32
  *
  * History:
- * 2025-03-01 0.9.6
- * 2026-03-15 1.0.7 - HW RTC Options, time setting via mobile app. 
+ *   2025-03-01   0.9.6 - First release, BLE + TFT
+ *   2026-03-15   1.0.7 - HW RTC Options, time setting via mobile app. 
  * Author: Blake Robertson
  * License: MIT
  *****************************************************************************/
@@ -15,52 +15,52 @@
 #include <EEPROM.h>
 #include <sys/time.h>
 #include <time.h>
+#include "TreadmillDevice.h"
 
 
-//-------------------------------------------------------------------------------------------------------------- //
-//----------------------------------[ CONFIGURATION SECTION ]--------------------------------------------------- //
-//-------------------------------------------------------------------------------------------------------------- //
+/******************************************************************************************
+ *                                      CONFIGURATION                                     
+ ******************************************************************************************/
 
 #define FW_VERSION "v1.0.7"
 
+/******************************************************************************************
+ * 🏃 TREADMILL MODE SELECTION 🏃
+ * Uncomment the mode that matches your treadmill setup.
+ ******************************************************************************************/
+
+#define RETRO_MODE 1         // 🟢 Use Serial Port for Sessions (Requires special hardware)
+//#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
+
+/******************************************************************************************
+ * ⚙️ GENERAL SETTINGS ⚙️
+ * Adjust these as needed for debugging, display, and RTC configurations.
+ ******************************************************************************************/
+
 #define ENABLE_DEBUG 1
-#define HAS_TFT_DISPLAY 1  // COMMENT if you aren't using the LilyGo Hardware.
-//#define RETRO_MODE 1        // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA SERIAL PORT (REQUIRES special hardware)
-#define OMNI_CONSOLE_MODE 1                  // UNCOMMENT IF YOU WANT TO GET SESSIONS VIA BLE (requires OMNI CONSOLE)
-#define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1  // COMMENT if you want to provide credentials for wifi below (easier when developing)
-#define INCLUDE_IMPROV_SERIAL 1              // ALLOWS CONFIGURING WIFI THROUGH FLASH INSTALLER WEBPAGE
-#define VERBOSE_LOGGING 0                    // Must be defined, change value to 1 to enable. Prints BLE/Serial Payloads to Port.
-//#define SESSION_SIMULATION_BUTTONS_ENABLED 1
-//#define LCD_4x20_ENABLED 1   // UNCOMMENT if you have a 4x20 I2C LCD Connected
-#define HAS_RTC_DS3231                 // UNCOMMENT if you have a hardware DS3231 RTC connected (purchased separately)
+//#define HAS_TFT_DISPLAY 1  // 🖥️ Enable TFT display (LilyGo hardware)
+#define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1  // 📡 Load WiFi credentials from EEPROM
+#define INCLUDE_IMPROV_SERIAL 1              // ⚡ Configure WiFi via Flash Installer
+#define VERBOSE_LOGGING 1                    // 🔍 Enable verbose BLE/Serial logging (set to 1 for more logs)
 
-
-
+//#define SESSION_SIMULATION_BUTTONS_ENABLED 1  // 🕹️ Enable test buttons for session simulation
+#define LCD_4x20_ENABLED 1  // 🖨️ Enable 4x20 I2C LCD screen support
+//#define HAS_RTC_DS3231  // ⏰ Enable support for DS3231 Real-Time Clock (RTC)
 
 #ifndef LOAD_WIFI_CREDENTIALS_FROM_EEPROM
   const char* ssid = "Angela";
-  const char* password = "iloveblake";  // Example guest network password for demonstration
-#endif
-
-#ifdef RETRO_MODE
-  // RETRO VERSION UART CONFIGURATION
-  // I haven't tried these GPIO pins with Lily-go, when i built the retro version I had a Arduino ESP32 and these were
-  // pins i used.
-  #define RX1PIN 20  // A0, GPIO1, D17
-  #define TX1PIN 6   // NOT ACTUALLY NEEDED!
-  #define RX2PIN 23  // A2, GPIO3, D19
-  #define TX2PIN 8   // NOT ACTUALLY NEEDED
+  const char* password = "iloveblake";  // 🔒 Example WiFi credentials for demonstration
 #endif
 
 #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
-  #define BUTTON_PIN 2  // D2  - Adds fake sessions on press
-  #define CLEAR_PIN 3   // D3  - Clears all sessions in EEPROM
+  #define BUTTON_PIN 2  // 🔘 D2 - Press to simulate a treadmill session
+  #define CLEAR_PIN 3   // 🔘 D3 - Press to clear all sessions in EEPROM
 #endif
 
-
-//-------------------------------------------------------------------------------------------------------------- //
-//----------------------------------[ DONT MODIFY BELOW THIS LINE ]--------------------------------------------- //
-//-------------------------------------------------------------------------------------------------------------- //
+/******************************************************************************************
+ * 🚨 DO NOT MODIFY BELOW THIS LINE 🚨
+ * Internal configurations. Modify at your own risk.
+ ******************************************************************************************/
 
 // DEPENDENT LIBRARIES
 #ifdef LCD_4x20_ENABLED
@@ -84,24 +84,18 @@
   #define BOT_BUTTON 0
 #endif
 
-#if !defined(RETRO_MODE) && !defined(OMNI_CONSOLE_MODE)
-  #error "At least one must be defined: RETRO_MODE or OMNI_CONSOLE_MODE"
-#endif
-
 #include "TreadmillDevice.h"
 #include "globals.h"
 
-TreadmillDevice *treadmillDevice = nullptr;
-
 #if defined(OMNI_CONSOLE_MODE) 
   #include "LifespanOmniConsoleTreadmillDevice.h"
-  treadmillDevice  = new LifespanOmniConsoleTreadmillDevice();
+  TreadmillDevice *treadmillDevice =  new LifespanOmniConsoleTreadmillDevice();
 #elif defined(RETRO_MODE)
-  // TODO add impl here.
+  #include "LifespanRetroConsoleTreadmillDevice.h"
+  TreadmillDevice *treadmillDevice =  new LifespanRetroConsoleTreadmillDevice();
+#else
+  #error "You have not selected a TreadmillDevice Implementation."
 #endif
-
-
-
 
 // I do not understand why, but this has to go above the RTC block or you'll get a lot of compilation errors about types.
 struct TreadmillSession {
@@ -129,8 +123,6 @@ struct TreadmillSession {
   }
 #endif
 
-
-
 // EEPROM Configuration
 #define EEPROM_SIZE 512
 #define MAX_SSID_LENGTH 32
@@ -138,62 +130,12 @@ struct TreadmillSession {
 #define PASSWORDS_INDEX 32
 #define SESSIONS_START_INDEX 64
 #define MAX_SESSIONS ((512 - (64 + 4)) / 12)
-#define SESSION_SIZE_BYTES 12
+#define SESSION_SIZE_BYTES sizeof(TreadmillSession)
 
 
 #include "./DebugWrapper.h"
 DebugWrapper Debug;
-
-#ifdef RETRO_MODE
-  #include <HardwareSerial.h>
-
-  int shouldIUpdateCounter = 0;
-  // Define the UART instances
-  HardwareSerial uart1(1);  // UART1 - RED = CONSOLE TX
-  HardwareSerial uart2(2);  // UART2 - ORANGE = TREADMILL TX
-  // Command buffers
-  String uart1Buffer = "";
-  String uart2Buffer = "";
-  int uart1RxCnt = 0;
-  int uart2RxCnt = 0;
-  #define CMD_BUF_SIZE 10
-  byte uart1Buf[CMD_BUF_SIZE];
-  byte uart2Buf[CMD_BUF_SIZE];
-  int lastRequestType;
-  #define LAST_REQUEST_IS_STEPS 1
-  #define LAST_REQUEST_IS_SPEED 2
-  #define LAST_REQUEST_IS_DISTANCE 3
-  #define LAST_REQUEST_IS_TIME 4
-  #define STEPS_STARTSWITH "1 3 0 15"
-  #define SPEED_STARTSWITH "1 6 0 10"
-#endif
-
-
 bool wasTimeSet = false;
-
-//------------------- COMMON TIME SETTING --------------------//
-/**
- * This is called by NTP Update and by 
- * the Mobile App during syncs via the BLE Time Write Characteristic
- */
-void setSystemTime( time_t epochTime) {
-  #ifdef HAS_RTC_DS3231
-    DateTime dt(epochTime);
-    if( rtcFound ) {
-      rtc.adjust(dt);
-    }
-  #endif
-
-  struct timeval tv;
-  tv.tv_sec = epochTime;
-  tv.tv_usec = 0;
-  settimeofday(&tv, NULL);
-  Debug.print("System time updated: ");
-  Debug.println(getFormattedTime());
-
-  wasTimeSet = true;
-}
-
 
 // BLE UUIDs
 static const char* BLE_SERVICE_UUID = "0000A51A-12BB-C111-1337-00099AACDEF0";
@@ -233,6 +175,29 @@ String lastRecordedDate = "";       //YYYY-MM-DD
 unsigned long totalStepsToday = 0;  //
 TreadmillSession currentSession;
 
+
+//------------------- COMMON TIME SETTING --------------------//
+/**
+ * This is called by NTP Update and by 
+ * the Mobile App during syncs via the BLE Time Write Characteristic
+ */
+void setSystemTime( time_t epochTime) {
+  #ifdef HAS_RTC_DS3231
+    DateTime dt(epochTime);
+    if( rtcFound ) {
+      rtc.adjust(dt);
+    }
+  #endif
+
+  struct timeval tv;
+  tv.tv_sec = epochTime;
+  tv.tv_usec = 0;
+  settimeofday(&tv, NULL);
+  Debug.print("System time updated: ");
+  Debug.println(getFormattedTime());
+
+  wasTimeSet = true;
+}
 
 // ------------------------------------------------------------------------------
 // LEDs / Indicators - Not really used anymore, depends on HW being Arduino ESP32
@@ -343,8 +308,6 @@ void setupWifi() {
   } else {
   }
 }
-
-
 
 #define NTP_PACKET_SIZE 48
 byte ntpPacketBuffer[NTP_PACKET_SIZE];
@@ -570,16 +533,16 @@ void saveWiFiCredentials(const char* ssid, const char* password) {
 }
 
 #ifdef INCLUDE_IMPROV_SERIAL
-void onImprovWiFiErrorCb(ImprovTypes::Error err) {
-  Debug.println("onImprovWifiErrorCb");
-  Debug.println(err);
-}
+  void onImprovWiFiErrorCb(ImprovTypes::Error err) {
+    Debug.println("onImprovWifiErrorCb");
+    Debug.println(err);
+  }
 
-void onImprovWiFiConnectedCb(const char* ssid, const char* password) {
-  Debug.println("IS: onImprovWiFiConnectedCb");
-  saveWiFiCredentials(ssid, password);
-  areWifiCredentialsSet = true;
-}
+  void onImprovWiFiConnectedCb(const char* ssid, const char* password) {
+    Debug.println("IS: onImprovWiFiConnectedCb");
+    saveWiFiCredentials(ssid, password);
+    areWifiCredentialsSet = true;
+  }
 #endif
 
 // ---------------------------------------------------------------------------
@@ -694,14 +657,14 @@ void updateLcd() {
 
 #if OMNI_CONSOLE_MODE
   if (pageStyle == 0) {
-    Debug.printf("Clearing LCD, consIsConn: %d, isMobAppConn: %d, isMobSubs:%\n", consoleIsConnected, isMobileAppConnected, isMobileAppSubscribed);
+    Debug.printf("Clearing LCD, consIsConn: %d, isMobAppConn: %d, isMobSubs:%\n", treadmillDevice->isConnected(), isMobileAppConnected, isMobileAppSubscribed);
     lcd.clear();  // Causes additional blocking i didn't want in the Serial mode.
   }
 #endif
 
   lcd.setCursor(0, 0);
   lcd.printf("TreadSpan %s ", FW_VERSION);
-  lcdPrintBoolIndicator(consoleIsConnected);
+  lcdPrintBoolIndicator(treadmillDevice->isConnected());
   lcdPrintBoolIndicator(isMobileAppConnected);
   lcdPrintBoolIndicator(isMobileAppSubscribed);
 
@@ -734,7 +697,7 @@ void periodicLcdUpdateMainLoopHandler() {
     updateLcd();
     lastLcdUpdate = millis();
   }
-}
+} 
 #endif
 
 
@@ -770,7 +733,6 @@ void IRAM_ATTR handleBotButtonInterrupt() {
 }
 
 void tftSetup() {
-#ifdef HAS_TFT_DISPLAY
   tft.init();
   delay(25);
   tft.setRotation(1);  // 2-portrait, usb up, 0-portrait (opposite)
@@ -786,7 +748,6 @@ void tftSetup() {
   attachInterrupt(digitalPinToInterrupt(BOT_BUTTON), handleBotButtonInterrupt, FALLING);
 
   tftUpdateDisplay();  // Initial display update
-#endif
 }
 
 void tftSplashScreen() {
@@ -1242,12 +1203,6 @@ void setup() {
     tftSetup();
   #endif
 
-  #ifdef RETRO_MODE
-    Debug.println("RETRO Serial Enabled");
-    uart1.begin(4800, SERIAL_8N1, RX1PIN, TX1PIN);
-    uart2.begin(4800, SERIAL_8N1, RX2PIN, TX2PIN);
-  #endif
-
   // Initialize EEPROM
   EEPROM.begin(EEPROM_SIZE);
   printAllSessionsInEEPROM();
@@ -1372,104 +1327,5 @@ void loop() {
 
   treadmillDevice->loopHandler();
 
-  #ifdef RETRO_MODE
-    retroModeMainLoopHandler();
-  #endif
-
   delay(1);
 }
-
-#ifdef RETRO_MODE
-float getSpeedFromCommand(uint8_t*);
-
-void retroModeMainLoopHandler() {
-  // Check if data is available on UART1
-  while (uart1.available() > 0) {
-    char receivedChar = uart1.read();
-    // Debug.printf("1>%02X\n", receivedChar);
-    uart1Buf[uart1RxCnt % CMD_BUF_SIZE] = receivedChar;
-    uart1RxCnt += 1;
-    uart1Buffer += String(receivedChar, DEC) + " ";
-    if (uart2RxCnt > 0) {
-      processResponse();
-    }
-  }
-
-  // // Check if data is available on UART2
-  while (uart2.available() > 0) {
-    char receivedChar = uart2.read();
-    // Debug.printf("2>%02X\n", receivedChar);
-    uart2Buf[uart2RxCnt % CMD_BUF_SIZE] = receivedChar;
-    uart2Buffer += String(receivedChar, DEC) + " ";
-    uart2RxCnt += 1;
-    // Print the UART1 Command
-    if (uart1RxCnt > 0) {
-      processRequest();
-    }
-  }
-}
-
-void processRequest() {
-  if (VERBOSE_LOGGING) {
-    Debug.print(getFormattedTime());
-    Debug.print(" REQ : ");
-    Debug.println(uart1Buffer);
-  } else {
-    toggleLedColor(BLUE_LED);
-  }
-
-  if (uart1Buffer.startsWith(STEPS_STARTSWITH)) {
-    lastRequestType = LAST_REQUEST_IS_STEPS;
-  } else if (uart1Buffer.startsWith(SPEED_STARTSWITH)) {
-    getSpeedFromCommand(uart1Buf);
-  } else {
-    lastRequestType = 0;
-  }
-
-  uart1Buffer = "";  // Clear the buffer
-  uart1RxCnt = 0;
-}
-
-void processResponse() {
-  if (VERBOSE_LOGGING) {
-    Debug.print(getFormattedTime());
-    Debug.print(" RESP: ");
-    Debug.println(uart2Buffer);
-  } else {
-    toggleLedColor(GREEN_LED);
-  }
-
-  if (lastRequestType == LAST_REQUEST_IS_STEPS) {
-    steps = uart2Buf[3] * 256 + uart2Buf[4];
-    //Debug.print("STEPS: ");
-    //Debug.println(steps);
-    lastRequestType = 0;
-  }
-  uart2Buffer = "";  // Clear the buffer
-  uart2RxCnt = 0;
-}
-
-/**
-   * Pass in a command buffer.
-   */
-float getSpeedFromCommand(uint8_t* buf) {
-  if (buf[3] == 10) {
-    speedInt = buf[4] * 256 + buf[5];
-    if (speedInt == 50) {
-      speedFloat = 0;
-      if (isTreadmillActive) {
-        sessionEndedDetected();
-      }
-      isTreadmillActive = false;
-    } else if (speedInt > 50) {
-      speedFloat = estimate_mph(speedInt);
-      if (!isTreadmillActive) {
-        sessionStartedDetected();
-      }
-      isTreadmillActive = true;
-    }
-    return speedFloat;
-  }
-  return -1;
-}
-#endif

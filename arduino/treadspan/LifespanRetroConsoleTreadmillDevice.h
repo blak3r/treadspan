@@ -44,14 +44,17 @@ public:
 
     // Called repeatedly in Arduino loop()
     void loopHandler() override {
-        // This replaces retroModeMainLoopHandler() from your original code.
-
         // 1) Check if data is available on UART1
         while (uart1.available() > 0) {
             char receivedChar = (char)uart1.read();
             uart1Buf[uart1RxCount % CMD_BUF_SIZE] = receivedChar;
             uart1RxCount++;
             uart1Buffer += String(receivedChar, DEC) + " ";
+            // Check if we have a command in other uart buffer to process.
+            // We're using commands coming in on other uart to trigger processing each other
+            if (uart2RxCount > 0) {
+              processResponse();
+            }
             // If we see data on UART1, let's see if we also have data from UART2
             // to form a request/response pair. (Or we can wait until we read the entire request.)
         }
@@ -62,17 +65,16 @@ public:
             uart2Buf[uart2RxCount % CMD_BUF_SIZE] = receivedChar;
             uart2RxCount++;
             uart2Buffer += String(receivedChar, DEC) + " ";
+            // Check if we have a command in other uart buffer to process.
+            // We're using commands coming in on other uart to trigger processing each other
+            if (uart1RxCount > 0) {
+              processRequest();
+            }
         }
+    }
 
-        // 3) If we got new data from UART1, process it
-        if (uart1RxCount > 0) {
-            processRequest();
-        }
-
-        // 4) If we got new data from UART2, process it
-        if (uart2RxCount > 0) {
-            processResponse();
-        }
+    bool isConnected() {
+      return false; // this is used to show a bluetooth icon, so we'll always return false.
     }
 
 private:

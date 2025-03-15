@@ -109,9 +109,22 @@ The source code to the mobile app is available in the ios-app folder.
 4. You'll need to install these libraries:
    * Nimble (v2.2.1)
    * TFT_eSPI (2.5.43) - After you install this library, you'll have to edit User_Setup.h and User_Setup_Select.h as shown in [this image](/screenshots/TFT_eSPI_Setup.png).
+   * RTCLib.h (2.1.4) - Only needed if you're using an RTC chip
 5. Default Upload Speed of 921600 would not work for me.  I'd get a packet error.  Goto `Tools->Upload Speed` and select `460800`
 6. Change the partition Scheme `Tools->Partition Scheme` to `Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)`
 7. Depending on your hardware edit `#define`'s at the top of the file. 
+
+### How do I add support for a new treadmill?
+It's pretty easy! You only need to modify the arduino code.  The mobile app is universal.  I outlined some steps I used
+for reverse engineering the Lifespan Fitness BLE protocol in the [Protocol Analysis](/protocol-analysis/README.md) Folder.
+
+1. Create a new `TreadmillDevice`, LifespanOmniConsoleTreadmillDevice is an example that uses Bluetooth Low Energy.
+2. Towards the top of treadspan.ino add a #define to select it, and then add to the `#if defined(OMNI_CONSOLE_MODE)`
+
+The TreadmillDevice interface is such that you have public methods for `setupHandler()` and `loopHandler()` which are called.  You write
+the code to detect when treadmill sessions start / stop and call the `sessionStartedDetected` and `sessionEndedDetected` methods.
+Your `loopHandler()` method should not block the main loop, use callback methods and state variables appropriately.
+
 
 ### iOS Mobile App
 
@@ -174,25 +187,23 @@ control it through the mobile app (you would also need the more complicated hard
 
 ## TODOs (Things actively working on)
 HIGH
-- ~~Add means of detecting if EEPROM is initialized.~~
-- ~~Finish the ESP32 Install Page.~~
-- ~~Figure out the timeout preventing it from going directly into wifi setup.~~
-- ~~Make a setup video.~~
-- See if we can compress space down so partition scheme doesn't need modified.
-
 
 MED
 - WIFI Reconnect code on Arduino.
 - Future proof the BLE protocol by adding a few additional options.
 -- Payload Version
 -- Ability to include calories, average speed, etc if we wanted to log workouts also.
--- Send time to device, Would be useful for an RTC based version.
+-- ~~Send time to device, Would be useful for an RTC based version.~~
+
 
 LOW
 - TEST: What would happen if you just turned off the treadmill while a session was active... need something to timeout if no data serial commands or BLE commands come in for a while for a while.
 - Increase eeprom size to allow for more sessions?
 - Could further optimize the serial code to prevent losing commands... but i'm not sure it going to make a difference.
 - Create a means to configure the WiFi (over BLE protocol in IOS App).
+- Mobile App --> Arduino Nano ESP32 takes a lot longer than LilyGo.  Not sure it matters much but seems odd. 
+- See if we can compress space down so partition scheme doesn't need modified.
+
 
 ## Get Help / Support
 
