@@ -9,6 +9,7 @@
  *****************************************************************************/
 
 #include <Arduino.h>
+
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <NimBLEDevice.h>
@@ -19,7 +20,7 @@
 
 
 /******************************************************************************************
- *                                      CONFIGURATION                                     
+ *                                      CONFIGURATION
  ******************************************************************************************/
 
 #define FW_VERSION "v1.0.7"
@@ -42,7 +43,7 @@
 #define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1  // 📡 Load WiFi credentials from EEPROM
 #define INCLUDE_IMPROV_SERIAL 1              // ⚡ Configure WiFi via Flash Installer
 #define VERBOSE_LOGGING 1                    // 🔍 Enable verbose BLE/Serial logging (set to 1 for more logs)
-
+#define GET_TIME_THROUGH_NTP 1
 //#define HAS_RTC_DS3231  // ⏰ Enable support for DS3231 Real-Time Clock (RTC)
 //#define SESSION_SIMULATION_BUTTONS_ENABLED 1  // 🕹️ Enable test buttons for session simulation
 //#define LCD_4x20_ENABLED 1  // 🖨️ Enable 4x20 I2C LCD screen support
@@ -87,7 +88,7 @@
 #include "TreadmillDevice.h"
 #include "globals.h"
 
-#if defined(OMNI_CONSOLE_MODE) 
+#if defined(OMNI_CONSOLE_MODE)
   #include "LifespanOmniConsoleTreadmillDevice.h"
   TreadmillDevice *treadmillDevice =  new LifespanOmniConsoleTreadmillDevice();
 #elif defined(RETRO_MODE)
@@ -104,7 +105,7 @@ struct TreadmillSession {
   uint32_t steps;
 };
 
-#ifdef HAS_RTC_DS3231 
+#ifdef HAS_RTC_DS3231
   #include "RTClib.h"
   RTC_DS3231 rtc;
   boolean rtcFound = false;
@@ -141,8 +142,8 @@ bool wasTimeSet = false;
 static const char* BLE_SERVICE_UUID = "0000A51A-12BB-C111-1337-00099AACDEF0";
 static const char* BLE_DATA_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF1";
 static const char* BLE_CONFIRM_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF2";
-static const char* BLE_TIME_READ_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF3";  
-static const char* BLE_TIME_WRITE_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF4"; 
+static const char* BLE_TIME_READ_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF3";
+static const char* BLE_TIME_WRITE_CHAR_UUID = "0000A51A-12BB-C111-1337-00099AACDEF4";
 
 // BLE Peripheral Variables (modified for NimBLE)
 NimBLEServer* pServer = nullptr;
@@ -178,7 +179,7 @@ TreadmillSession currentSession;
 
 //------------------- COMMON TIME SETTING --------------------//
 /**
- * This is called by NTP Update and by 
+ * This is called by NTP Update and by
  * the Mobile App during syncs via the BLE Time Write Characteristic
  */
 void setSystemTime( time_t epochTime) {
@@ -213,6 +214,8 @@ void setLed(uint8_t color, bool status) {
   pinMode(color, OUTPUT);
   digitalWrite(color, status);
 }
+
+#ifdef GET_TIME_THROUGH_NTP
 
 // ---------------------------------------------------------------------------
 // Wifi / NTP
@@ -356,6 +359,9 @@ void checkNtpUpdate() {
     checkNtpResponse();
   }
 }
+
+#endif // GET_TIME_THROUGH_NTP
+
 
 String getFormattedTime() {
   time_t now = time(nullptr);
@@ -697,7 +703,7 @@ void periodicLcdUpdateMainLoopHandler() {
     updateLcd();
     lastLcdUpdate = millis();
   }
-} 
+}
 #endif
 
 
@@ -804,6 +810,7 @@ void tftWifiStatusScreen(uint8_t configVsNotConnected, const char* ssid) {
   sprite.pushSprite(0, 0);
 }
 
+#ifdef GET_TIME_THROUGH_NTP
 void tftWifiConnectingScreen(const char* ssid) {
   static uint8_t dotCounter = 0;
   sprite.setSwapBytes(true);
@@ -833,13 +840,24 @@ void tftWifiConnectingScreen(const char* ssid) {
   sprite.setTextDatum(TL_DATUM);
   sprite.pushSprite(0, 0);
 }
-
+#else
+void tftWifiConnectingScreen(const char* ssid) {
+  // If GET_TIME_THROUGH_NTP is not defined, we can just leave this empty or do something minimal.
+  sprite.setSwapBytes(true);
+  sprite.fillScreen(TFT_BLACK);
+  sprite.fillRect(0, 0, RES_X, RES_Y, TFT_BLACK);
+  sprite.setTextSize(2);
+  sprite.setTextColor(TFT_WHITE, TFT_BLACK);
+  sprite.drawString("NTP not enabled", 10, 10);
+  sprite.pushSprite(0, 0);
+}
+#endif
 
 /**
  * for sizeY = 32, X will take up 14 pixels
  * for sizeY = 24, width of icon is 10 pixels
  * @param x - startX upper left corner
- * @param y - startY 
+ * @param y - startY
  * @param sizeY - how big you want the icon such as 24 pixels high.
  * @param color - color, default is tft.color565(0, 130, 252);
  */
@@ -908,14 +926,14 @@ void tftRunningScreen(uint8_t primaryDisplayMetric) {
   static uint8_t altToggle = 0;
 
   switch( primaryDisplayMetric ) {
-    case PDM_SESSION_STEPS: 
+    case PDM_SESSION_STEPS:
       metricValue = steps;
       displayMetricLabel = false;
       break;
     case PDM_TODAYS_STEPS:
       // defaults are such that todays steps are already configured.
       break;
-    case PDM_ALTERNATE: 
+    case PDM_ALTERNATE:
     default:
       if(isTreadmillActive) {
         // Alternate every 3 seconds
@@ -984,9 +1002,20 @@ void tftUpdateDisplay() {
 
   if (!areWifiCredentialsSet) {
     tftWifiStatusScreen(0, "");
-  } else if (WiFi.status() != WL_CONNECTED) {
+  } else if (
+  #ifdef GET_TIME_THROUGH_NTP
+    WiFi.status() != WL_CONNECTED
+  #else
+    true  // If no NTP, then we can skip this check
+  #endif
+  ) {
     char tempSsidBuf[32], tempPasswordBuf[32];
-    loadWifiCredentialsIntoBuffers(tempSsidBuf, tempPasswordBuf);
+    #ifdef GET_TIME_THROUGH_NTP
+      loadWifiCredentialsIntoBuffers(tempSsidBuf, tempPasswordBuf);
+    #else
+      strncpy(tempSsidBuf, "NoNTP", 31);
+      strncpy(tempPasswordBuf, "NoNTP", 31);
+    #endif
     tftWifiStatusScreen(1, tempSsidBuf);
   } else {
     switch (choice) {
@@ -1120,9 +1149,9 @@ class TimeWriteCallbacks : public NimBLECharacteristicCallbacks {
     if (rawValue.size() == 4) {
       Debug.printf("Entered timeWrite2: %s\n", rawValue);
       time_t newTime = ((uint8_t)rawValue[0] << 24) |
-                         ((uint8_t)rawValue[1] << 16) |
-                         ((uint8_t)rawValue[2] << 8)  |
-                         ((uint8_t)rawValue[3]);
+                       ((uint8_t)rawValue[1] << 16) |
+                       ((uint8_t)rawValue[2] << 8)  |
+                       ((uint8_t)rawValue[3]);
       setSystemTime(newTime);
     }
   }
@@ -1207,8 +1236,10 @@ void setup() {
   EEPROM.begin(EEPROM_SIZE);
   printAllSessionsInEEPROM();
 
-  // WiFi + NTP
-  setupWifi();
+  #ifdef GET_TIME_THROUGH_NTP
+    // WiFi + NTP
+    setupWifi();
+  #endif
 
   #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
     pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -1287,8 +1318,23 @@ void loop() {
     improvSerial.handleSerial();
   #endif
 
-  // Non-blocking NTP check
-  checkNtpUpdate();
+  #ifdef GET_TIME_THROUGH_NTP
+    // Non-blocking NTP check
+    checkNtpUpdate();
+
+    // Simple reconnect logic if WiFi credentials exist but WiFi is lost
+    static unsigned long lastWifiCheck = 0;
+    const unsigned long wifiCheckInterval = 10000; // 10 seconds
+    if (millis() - lastWifiCheck >= wifiCheckInterval) {
+      lastWifiCheck = millis();
+      if (areWifiCredentialsSet && (WiFi.status() != WL_CONNECTED)) {
+        Debug.println("Lost WiFi connection, attempting to reconnect...");
+        char ssidBuf[32], passBuf[32];
+        loadWifiCredentialsIntoBuffers(ssidBuf, passBuf);
+        connectWifi(ssidBuf, passBuf);
+      }
+    }
+  #endif
 
   #ifdef HAS_RTC_DS3231
     periodicRtcDS3231TimeRetriever();
