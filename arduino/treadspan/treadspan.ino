@@ -17,6 +17,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include "TreadmillDevice.h"
+#include "HasElapsed.h"
 
 
 /******************************************************************************************
@@ -296,6 +297,19 @@ bool connectWifi(const char* ssid, const char* password) {
   return WiFi.status() == WL_CONNECTED;
 }
 
+bool reconnectWifiIfNeccessary() {
+  static HasElapsed reconnectWifiTimer(10000);
+
+  if( reconnectWifiTimer.isIntervalUp() ) {
+    if (areWifiCredentialsSet && (WiFi.status() != WL_CONNECTED)) {
+      Debug.printf("Lost WiFi connection, attempting to reconnect...\n");
+      char ssidBuf[32], passBuf[32];
+      loadWifiCredentialsIntoBuffers(ssidBuf, passBuf);
+      connectWifi(ssidBuf, passBuf);
+    }
+  }
+}
+
 // This callback is called when WiFi connects and gets an IP
 void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
@@ -361,7 +375,7 @@ void checkNtpResponse() {
   }
 }
 
-void checkNtpUpdate() {
+void periodicNtpUpdateMainLoopHandler() {
   if (WiFi.status() == WL_CONNECTED) {
     if ((millis() - lastNtpRequest) >= ntpUpdateInterval) {
       sendNtpRequest();
@@ -1329,21 +1343,7 @@ void loop() {
   #endif
 
   #ifdef GET_TIME_THROUGH_NTP
-    // Non-blocking NTP check
-    checkNtpUpdate();
-
-    // Simple reconnect logic if WiFi credentials exist but WiFi is lost
-    static unsigned long lastWifiCheck = 0;
-    const unsigned long wifiCheckInterval = 10000; // 10 seconds
-    if (millis() - lastWifiCheck >= wifiCheckInterval) {
-      lastWifiCheck = millis();
-      if (areWifiCredentialsSet && (WiFi.status() != WL_CONNECTED)) {
-        Debug.println("Lost WiFi connection, attempting to reconnect...");
-        char ssidBuf[32], passBuf[32];
-        loadWifiCredentialsIntoBuffers(ssidBuf, passBuf);
-        connectWifi(ssidBuf, passBuf);
-      }
-    }
+    periodicNtpUpdateMainLoopHandler();
   #endif
 
   #ifdef HAS_RTC_DS3231

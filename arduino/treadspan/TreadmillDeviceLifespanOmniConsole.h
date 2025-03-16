@@ -110,7 +110,7 @@ private:
         else {
           // Only connect if scanning has completely stopped (probably not needed)
           if (!NimBLEDevice::getScan()->isScanning()) {
-            Debug.println("Scan complete, attempting to connect...");
+            Debug.printf("Scan complete, attempting to connect...\n");
             connectToFoundConsole();
           } else {
             Debug.println("Waiting for scan to finish...");
@@ -183,7 +183,7 @@ private:
         return;
       }
 
-      Debug.printf("Connected to console. Discovering services..\n");
+      Debug.printf("Connected to Omni Console. Discovering services..\n");
       NimBLERemoteService* service = consoleClient->getService(CONSOLE_SERVICE_UUID);
       if (!service) {
         Debug.printf("Failed to find FFF0 service. Disconnecting...\n");
