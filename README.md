@@ -187,6 +187,7 @@ control it through the mobile app (you would also need the more complicated hard
 
 ## TODOs (Things actively working on)
 HIGH
+- put code in place for fixing duration if time not set at start (mobile app shouldnt crash)
 
 MED
 - WIFI Reconnect code on Arduino.
