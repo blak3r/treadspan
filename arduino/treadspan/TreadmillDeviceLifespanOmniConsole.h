@@ -296,38 +296,42 @@ private:
 
       // Parse the response
       switch (lastConsoleCommandOpcode) {
-      case OPCODE_STEPS:
+        case OPCODE_STEPS:
           steps = data[2] * 256 + data[3];
           Debug.printf("Steps: %d\n", steps);
           break;
 
-      case OPCODE_CALORIES:
+        case OPCODE_CALORIES:
           // e.g. int calories = data[2] * 256 + data[3];
           // Debug.printf("Calories: %d\n", calories);
           break;
 
-      case OPCODE_DISTANCE:
+        case OPCODE_DISTANCE:
           // e.g. int distance = data[2] * 256 + data[3];
           // Debug.printf("Distance: %d\n", distance);
           break;
 
-      case OPCODE_SPEED: {
+        case OPCODE_SPEED: {
           int avgSpeedInt = data[2] * 256 + data[3];
           float avgSpeedFloat = estimate_mph(avgSpeedInt);
           Debug.printf("Avg Speed: %d => %.1f MPH\n", avgSpeedInt, avgSpeedFloat);
           break;
-      }
-      case OPCODE_DURATION:
+        }
+        case OPCODE_DURATION:
           Debug.printf("DURATION: %d:%d:%d\n", data[2], data[3], data[4]);
-          // If you want to adjust session start time, do so here.
+          if (wasTimeSet) {
+            // Fixes issue where device powers on after a session on treadmill had started (or if time wasn't set when session started)
+            uint32_t sessionStartTime = (uint32_t)time(nullptr) - ((data[4]) + (data[3] * 60) + (data[2] * 60 * 60));
+            currentSession.start = sessionStartTime;
+          }
           break;
 
-      case OPCODE_STATUS: {
+        case OPCODE_STATUS: {
           uint8_t status = data[2];
           if (data[3] || data[4]) {
-              // Possibly an invalid status response
-              commandResponseReceived = true;
-              return;
+            // Possibly an invalid status response
+            commandResponseReceived = true;
+            return;
           }
           // See your original code:
           #define STATUS_RUNNING 3
@@ -339,22 +343,22 @@ private:
           // at least twice.  It's not uncommon to miss command or get the wrong response.  I found without this
           // we were detecting sessions ending early resulting in lots of duplicate overlapping sessions.
           if (lastSessionStatus == status) {
-              timesSessionStatusHasBeenTheSame++;
+            timesSessionStatusHasBeenTheSame++;
           } else {
-              timesSessionStatusHasBeenTheSame = 0;
+            timesSessionStatusHasBeenTheSame = 0;
           }
           lastSessionStatus = status;
 
           switch (status) {
-          case STATUS_RUNNING:
+            case STATUS_RUNNING:
               Debug.println("Treadmill: RUNNING");
               if (!isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1) {
                   sessionStartedDetected();
               }
               break;
-          case STATUS_PAUSED:
-          case STATUS_SUMMARY_SCREEN:
-          case STATUS_STANDBY:
+            case STATUS_PAUSED:
+            case STATUS_SUMMARY_SCREEN:
+            case STATUS_STANDBY:
               Debug.printf("Treadmill: %s\n", 
                   (status==STATUS_PAUSED ? "PAUSED" :
                   (status==STATUS_SUMMARY_SCREEN ? "SUMMARY_SCREEN" : "STANDBY")));
@@ -362,7 +366,7 @@ private:
                   sessionEndedDetected();
               }
               break;
-          default:
+            default:
               Debug.printf("Unknown status: %d\n", status);
           }
           break;

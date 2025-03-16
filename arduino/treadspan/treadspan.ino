@@ -107,13 +107,6 @@
   #error "You have not selected a TreadmillDevice Implementation."
 #endif
 
-// I do not understand why, but this has to go above the RTC block or you'll get a lot of compilation errors about types.
-struct TreadmillSession {
-  uint32_t start;
-  uint32_t stop;
-  uint32_t steps;
-};
-
 #ifdef HAS_RTC_DS3231
   #include "RTClib.h"
   RTC_DS3231 rtc;
