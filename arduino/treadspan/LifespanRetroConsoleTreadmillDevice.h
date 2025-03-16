@@ -5,6 +5,13 @@
 #include "TreadmillDevice.h"
 #include "globals.h"  // for sessionStartedDetected(), sessionEndedDetected(), etc.
 
+/**
+ * Simple helper to estimate miles-per-hour from the integer “speed” value.
+ * In your original code, you used "0.00435 * value - 0.009".
+ */
+inline float estimate_mph(int value) {
+    return (0.00435f * value) - 0.009f;
+}
 
 /**
  * This class encapsulates the "Retro Console" logic that was previously

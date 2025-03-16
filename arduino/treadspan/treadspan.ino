@@ -29,8 +29,8 @@
  * Uncomment the mode that matches your treadmill setup.
  ******************************************************************************************/
 
-#define RETRO_MODE 1         // 🟢 Use Serial Port for Sessions (Requires special hardware)
-//#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
+#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
+//#define RETRO_MODE 1         // 🟢 Use Serial Port for Sessions (Requires special hardware)
 
 /******************************************************************************************
  * ⚙️ GENERAL SETTINGS ⚙️
@@ -38,14 +38,14 @@
  ******************************************************************************************/
 
 #define ENABLE_DEBUG 1
-//#define HAS_TFT_DISPLAY 1  // 🖥️ Enable TFT display (LilyGo hardware)
+#define HAS_TFT_DISPLAY 1  // 🖥️ Enable TFT display (LilyGo hardware)
 #define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1  // 📡 Load WiFi credentials from EEPROM
 #define INCLUDE_IMPROV_SERIAL 1              // ⚡ Configure WiFi via Flash Installer
 #define VERBOSE_LOGGING 1                    // 🔍 Enable verbose BLE/Serial logging (set to 1 for more logs)
 
-//#define SESSION_SIMULATION_BUTTONS_ENABLED 1  // 🕹️ Enable test buttons for session simulation
-#define LCD_4x20_ENABLED 1  // 🖨️ Enable 4x20 I2C LCD screen support
 //#define HAS_RTC_DS3231  // ⏰ Enable support for DS3231 Real-Time Clock (RTC)
+//#define SESSION_SIMULATION_BUTTONS_ENABLED 1  // 🕹️ Enable test buttons for session simulation
+//#define LCD_4x20_ENABLED 1  // 🖨️ Enable 4x20 I2C LCD screen support
 
 #ifndef LOAD_WIFI_CREDENTIALS_FROM_EEPROM
   const char* ssid = "Angela";
