@@ -7,6 +7,7 @@
 // Global Variables
 // ---------------------------------------------------------------------------
 extern int steps;
+extern int calories;
 extern bool isTreadmillActive;
 extern DebugWrapper Debug;
 

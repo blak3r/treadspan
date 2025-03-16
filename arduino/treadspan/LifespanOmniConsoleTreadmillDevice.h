@@ -21,43 +21,26 @@ public:
     virtual ~LifespanOmniConsoleTreadmillDevice() {}
 
     /**
-     * Called once from setup(), to initialize scanning and connect to the console
+     * Called once from setup()
      */
     void setupHandler() override {
-        // Start a short scan to see if we can find the “LifeSpan-TM” device
-        NimBLEScan* pBLEScan = NimBLEDevice::getScan();
-        pBLEScan->setScanCallbacks(&mScanCallbacks, false);
-        pBLEScan->setActiveScan(true);
-        pBLEScan->start(3, false);  // Scan for 3 seconds
-
-        // The callback might set foundConsole = true if discovered
-        // Wait briefly to see if it found anything
-        delay(50);
-
-        if (foundConsole) {
-            connectToFoundConsole();
-        } else {
-            Debug.println("No LifeSpan-TM device found in initial scan window.");
-        }
+      // No setup needed.
     }
 
     /**
-     * Called repeatedly from loop()
+     * Called repeatedly from main loop(), it should handle reconnecting
      */
     void loopHandler() override {
-        if (!consoleIsConnected) {
-            // Attempt reconnect every ~5 seconds
+        // If console is not connected, try to reconnect periodically
+          if (!consoleIsConnected) {
             static unsigned long lastTry = 0;
             if (millis() - lastTry > 5000) {
-                lastTry = millis();
-                Debug.println("Attempting to scan & connect to console again...");
-                NimBLEScan* pBLEScan = NimBLEDevice::getScan();
-                pBLEScan->setActiveScan(true);
-                pBLEScan->start(3, false);
+              lastTry = millis();
+              connectToConsoleViaBLE();
             }
-        } else {
-            consoleBLEMainLoop();
-        }
+          } else {
+            sendNextOpcodeIfAppropriate();
+          }
     }
 
     bool isConnected() override {
@@ -242,6 +225,9 @@ private:
             #define STATUS_SUMMARY_SCREEN 4
             #define STATUS_STANDBY 1
 
+            // In order to improve reliability of session start/stop detection, we ensure we get the same value
+            // at least twice.  It's not uncommon to miss command or get the wrong response.  I found without this
+            // we were detecting sessions ending early resulting in lots of duplicate overlapping sessions.
             if (lastSessionStatus == status) {
                 timesSessionStatusHasBeenTheSame++;
             } else {
@@ -330,7 +316,29 @@ private:
         }
     }
 
-    void consoleBLEMainLoop() {
+    void connectToConsoleViaBLE() {
+      Debug.printf("Scanning for LifeSpan Omni Console...\n");
+
+      // Reset flags
+      foundConsole = false;
+      //foundConsoleAddress = NimBLEAddress(""); // TODO
+
+      NimBLEScan* pBLEScan = NimBLEDevice::getScan();
+      pBLEScan->setScanCallbacks(&mScanCallbacks, false);
+      pBLEScan->setActiveScan(true);
+      pBLEScan->start(3, false);  // Scan for 1 second
+
+      // NimBLE requires a small delay after scanning
+      delay(50);
+
+      if (foundConsole) {
+        connectToFoundConsole();
+      } else {
+        Debug.println("No LifeSpan-TM device found in scan window.");
+      }
+    }
+
+    void sendNextOpcodeIfAppropriate() {
         uint32_t millisSinceLast = millis() - lastConsoleCommandSentAt;
         bool canSend = (commandResponseReceived && (millisSinceLast >= consoleCommandUpdateIntervalMin));
         bool forcedSend = (millisSinceLast >= consoleCommandUpdateIntervalMax);
@@ -348,7 +356,6 @@ private:
 
             Debug.printf("Sending opcode 0x%02X (idx=%d)\n", opcode, consoleCommandIndex);
             consoleWriteCharacteristic->writeValue((const uint8_t*)consoleCmdBuf, sizeof(consoleCmdBuf));
-
 
             lastConsoleCommandIndex  = consoleCommandIndex;
             lastConsoleCommandOpcode = opcode;
