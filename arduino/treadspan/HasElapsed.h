@@ -46,5 +46,5 @@ class HasElapsed {
   private:
     unsigned long interval;
     unsigned long defaultInterval;
-    unsigned long lastCheck;
+    volatile unsigned long lastCheck;
 };

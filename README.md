@@ -190,7 +190,7 @@ HIGH
 - put code in place for fixing duration if time not set at start (mobile app shouldnt crash)
 
 MED
-- WIFI Reconnect code on Arduino.
+- ~~WIFI Reconnect code on Arduino.~~
 - Future proof the BLE protocol by adding a few additional options.
 -- Payload Version
 -- Ability to include calories, average speed, etc if we wanted to log workouts also.

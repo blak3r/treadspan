@@ -210,173 +210,155 @@ void setSystemTime( time_t epochTime) {
   wasTimeSet = true;
 }
 
-// ------------------------------------------------------------------------------
-// LEDs / Indicators - Not really used anymore, depends on HW being Arduino ESP32
-// ------------------------------------------------------------------------------
-#define RED_LED 14
-#define BLUE_LED 15
-#define GREEN_LED 16
-void toggleLedColor(uint8_t color) {
-  pinMode(color, OUTPUT);                    // Ensure the pin is set as an output
-  digitalWrite(color, !digitalRead(color));  // Toggle the LED state
-}
-void setLed(uint8_t color, bool status) {
-  pinMode(color, OUTPUT);
-  digitalWrite(color, status);
-}
-
-
-
 // ---------------------------------------------------------------------------
 // Wifi / NTP
 // ---------------------------------------------------------------------------
 #ifdef GET_TIME_THROUGH_NTP
-// NTP Configuration
-const char* ntpServer = "pool.ntp.org";
-const int ntpPort = 123;
-WiFiUDP ntpUDP;
+  // NTP Configuration
+  const char* ntpServer = "pool.ntp.org";
+  const int ntpPort = 123;
+  WiFiUDP ntpUDP;
 
-void trimString(char* str, int maxLength) {
-  for (int i = 0; i < maxLength; i++) {
-    if (str[i] == '\0') break;  // Stop at first null
+  void trimString(char* str, int maxLength) {
+    for (int i = 0; i < maxLength; i++) {
+      if (str[i] == '\0') break;  // Stop at first null
+    }
   }
-}
 
-void loadWiFiCredentialsFromEEPROM(char* ssid, char* password) {
-  for (int i = 0; i < MAX_SSID_LENGTH; i++) {
-    ssid[i] = EEPROM.read(SSID_INDEX + i);
-    if (ssid[i] == '\0') break;
+  void loadWiFiCredentialsFromEEPROM(char* ssid, char* password) {
+    for (int i = 0; i < MAX_SSID_LENGTH; i++) {
+      ssid[i] = EEPROM.read(SSID_INDEX + i);
+      if (ssid[i] == '\0') break;
+    }
+    ssid[MAX_SSID_LENGTH - 1] = '\0';
+
+    for (int i = 0; i < MAX_SSID_LENGTH; i++) {
+      password[i] = EEPROM.read(PASSWORDS_INDEX + i);
+      if (password[i] == '\0') break;
+    }
+    password[MAX_SSID_LENGTH - 1] = '\0';
+
+    Debug.printf("Loaded SSID: %s\n", ssid);
+    Debug.printf("Loaded Password: %s\n", password);
   }
-  ssid[MAX_SSID_LENGTH - 1] = '\0';
 
-  for (int i = 0; i < MAX_SSID_LENGTH; i++) {
-    password[i] = EEPROM.read(PASSWORDS_INDEX + i);
-    if (password[i] == '\0') break;
-  }
-  password[MAX_SSID_LENGTH - 1] = '\0';
-
-  Debug.printf("Loaded SSID: %s\n", ssid);
-  Debug.printf("Loaded Password: %s\n", password);
-}
-
-bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
-  #if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
-    loadWiFiCredentialsFromEEPROM(ssidBuf, passwordBuf);
-  #else
-    strncpy(ssidBuf, ssid, sizeof(ssidBuf));  // Developer mode... ssid/password are hardcoded.
-    strncpy(passwordBuf, password, sizeof(ssidBuf));
-  #endif
-
-  Debug.printf("ssidBuf[0]: %02X, len1 %d len2 %d\n", ssidBuf[0], strlen(ssidBuf), strlen(passwordBuf));
-
-  return ssidBuf[0] != 0xFF && strlen(ssidBuf) > 0 && strlen(passwordBuf) > 0 && strlen(ssidBuf) < 31 && strlen(passwordBuf) < 31;
-}
-
-void screenWifiConnecting(void);  // forward declaration
-
-bool connectWifi(const char* ssid, const char* password) {
-  #ifdef LCD_4x20_ENABLED
-    lcd.clear();
-    lcd.print("Connecting to WiFi");
-  #endif
-
-  Debug.printf("Connecting to WiFi... %s\n", ssid);
-  WiFi.begin(ssid, password);
-
-  unsigned long startTime = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < 7000) {
-    #ifdef HAS_TFT_DISPLAY
-      tftWifiConnectingScreen(ssid);
+  bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
+    #if LOAD_WIFI_CREDENTIALS_FROM_EEPROM
+      loadWiFiCredentialsFromEEPROM(ssidBuf, passwordBuf);
+    #else
+      strncpy(ssidBuf, ssid, sizeof(ssidBuf));  // Developer mode... ssid/password are hardcoded.
+      strncpy(passwordBuf, password, sizeof(ssidBuf));
     #endif
-    delay(100);
+
+    Debug.printf("ssidBuf[0]: %02X, len1 %d len2 %d\n", ssidBuf[0], strlen(ssidBuf), strlen(passwordBuf));
+
+    return ssidBuf[0] != 0xFF && strlen(ssidBuf) > 0 && strlen(passwordBuf) > 0 && strlen(ssidBuf) < 31 && strlen(passwordBuf) < 31;
   }
 
-  return WiFi.status() == WL_CONNECTED;
-}
+  void screenWifiConnecting(void);  // forward declaration
 
-bool reconnectWifiIfNecessary() {
-  static HasElapsed reconnectWifiTimer(10000);
+  bool connectWifi(const char* ssid, const char* password) {
+    #ifdef LCD_4x20_ENABLED
+      lcd.clear();
+      lcd.print("Connecting to WiFi");
+    #endif
 
-  if( reconnectWifiTimer.isIntervalUp() ) {
-    if (areWifiCredentialsSet && (WiFi.status() != WL_CONNECTED)) {
-      Debug.printf("Lost WiFi connection, attempting to reconnect...\n");
-      char ssidBuf[32], passBuf[32];
-      loadWifiCredentialsIntoBuffers(ssidBuf, passBuf);
-      connectWifi(ssidBuf, passBuf);
+    Debug.printf("Connecting to WiFi... %s\n", ssid); 
+    WiFi.begin(ssid, password);
+
+    unsigned long startTime = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < 7000) {
+      #ifdef HAS_TFT_DISPLAY
+        tftWifiConnectingScreen(ssid);
+      #endif
+      delay(100);
+    }
+
+    return WiFi.status() == WL_CONNECTED;
+  }
+
+  bool reconnectWifiIfNecessary() {
+    static HasElapsed reconnectWifiTimer(30000);
+
+    if( reconnectWifiTimer.isIntervalUp() ) {
+      if (areWifiCredentialsSet && (WiFi.status() != WL_CONNECTED)) {
+        Debug.printf("Lost WiFi connection, attempting to reconnect...\n");
+        char ssidBuf[32], passBuf[32];
+        loadWifiCredentialsIntoBuffers(ssidBuf, passBuf);
+        connectWifi(ssidBuf, passBuf);
+      }
     }
   }
-}
 
-// This callback is called when WiFi connects and gets an IP
-void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
-  if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
-    // START UDP
-    ntpUDP.begin(ntpPort);
-    delay(100);
-    sendNtpRequest();  // initial time request
-  }
-}
-
-void setupWifi() {
-  char ssid[32], password[32];
-  WiFi.onEvent(WiFiEvent);
-  areWifiCredentialsSet = loadWifiCredentialsIntoBuffers(ssid, password);  // loads from SSID/PASS from file system or program memory depending on build configs.
-  Debug.printf("areWifiCredentialsSet: %d\n", areWifiCredentialsSet);
-  if (areWifiCredentialsSet) {
-    connectWifi(ssid, password);
-  } else {
-  }
-}
-
-#define NTP_PACKET_SIZE 48
-byte ntpPacketBuffer[NTP_PACKET_SIZE];
-
-// Timer variables
-unsigned long lastNtpRequest = 0;
-unsigned long ntpUpdateInterval = 3000;  // eventually 600000 (10 mins), but start short for quick sync
-
-void sendNtpRequest() {
-  Debug.println("Sending NTP request...");
-
-  memset(ntpPacketBuffer, 0, NTP_PACKET_SIZE);
-  ntpPacketBuffer[0] = 0b11100011;  // LI, Version, Mode
-  ntpPacketBuffer[1] = 0;           // Stratum
-  ntpPacketBuffer[2] = 6;           // Polling Interval
-  ntpPacketBuffer[3] = 0xEC;        // Peer Clock Precision
-
-  // Send packet to NTP server
-  ntpUDP.beginPacket(ntpServer, ntpPort);
-  ntpUDP.write(ntpPacketBuffer, NTP_PACKET_SIZE);
-  ntpUDP.endPacket();
-
-  lastNtpRequest = millis();
-}
-
-void checkNtpResponse() {
-  int packetSize = ntpUDP.parsePacket();
-  if (packetSize >= NTP_PACKET_SIZE) {
-    Debug.println("NTP response received!");
-
-    ntpUDP.read(ntpPacketBuffer, NTP_PACKET_SIZE);
-    unsigned long highWord = word(ntpPacketBuffer[40], ntpPacketBuffer[41]);
-    unsigned long lowWord = word(ntpPacketBuffer[42], ntpPacketBuffer[43]);
-    time_t epochTime = (highWord << 16 | lowWord) - 2208988800UL;  // Convert to UNIX time
-
-    ntpUpdateInterval = 600000;  // set to 10 minutes after first success
-    setSystemTime(epochTime);
-  }
-}
-
-void periodicNtpUpdateMainLoopHandler() {
-  if (WiFi.status() == WL_CONNECTED) {
-    if ((millis() - lastNtpRequest) >= ntpUpdateInterval) {
-      sendNtpRequest();
+  // This callback is called when WiFi connects and gets an IP
+  void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+      // START UDP
+      ntpUDP.begin(ntpPort);
+      delay(100);
+      sendNtpRequest();  // initial time request
     }
-    checkNtpResponse();
   }
-  reconnectWifiIfNecessary();
-}
 
+  void setupWifi() {
+    char ssid[32], password[32];
+    WiFi.onEvent(WiFiEvent);
+    areWifiCredentialsSet = loadWifiCredentialsIntoBuffers(ssid, password);  // loads from SSID/PASS from file system or program memory depending on build configs.
+    Debug.printf("areWifiCredentialsSet: %d\n", areWifiCredentialsSet);
+    if (areWifiCredentialsSet) {
+      connectWifi(ssid, password);
+    } else {
+    }
+  }
+
+  #define NTP_PACKET_SIZE 48
+  byte ntpPacketBuffer[NTP_PACKET_SIZE];
+
+  // Timer variables
+  unsigned long lastNtpRequest = 0;
+  unsigned long ntpUpdateInterval = 3000;  // eventually 600000 (10 mins), but start short for quick sync
+
+  void sendNtpRequest() {
+    Debug.printf("Sending NTP request...\n");
+
+    memset(ntpPacketBuffer, 0, NTP_PACKET_SIZE);
+    ntpPacketBuffer[0] = 0b11100011;  // LI, Version, Mode
+    ntpPacketBuffer[1] = 0;           // Stratum
+    ntpPacketBuffer[2] = 6;           // Polling Interval
+    ntpPacketBuffer[3] = 0xEC;        // Peer Clock Precision
+
+    // Send packet to NTP server
+    ntpUDP.beginPacket(ntpServer, ntpPort);
+    ntpUDP.write(ntpPacketBuffer, NTP_PACKET_SIZE);
+    ntpUDP.endPacket();
+
+    lastNtpRequest = millis();
+  }
+
+  void checkNtpResponse() {
+    int packetSize = ntpUDP.parsePacket();
+    if (packetSize >= NTP_PACKET_SIZE) {
+      Debug.println("NTP response received!");
+
+      ntpUDP.read(ntpPacketBuffer, NTP_PACKET_SIZE);
+      unsigned long highWord = word(ntpPacketBuffer[40], ntpPacketBuffer[41]);
+      unsigned long lowWord = word(ntpPacketBuffer[42], ntpPacketBuffer[43]);
+      time_t epochTime = (highWord << 16 | lowWord) - 2208988800UL;  // Convert to UNIX time
+
+      ntpUpdateInterval = 600000;  // set to 10 minutes after first success
+      setSystemTime(epochTime);
+    }
+  }
+
+  void periodicNtpUpdateMainLoopHandler() {
+    if (WiFi.status() == WL_CONNECTED) {
+      if ((millis() - lastNtpRequest) >= ntpUpdateInterval) {
+        sendNtpRequest();
+      }
+      checkNtpResponse();
+    }
+    //reconnectWifiIfNecessary();
+  }
 #endif // GET_TIME_THROUGH_NTP
 
 
@@ -407,8 +389,6 @@ String getFormattedTime() {
 //    Byte 0..3  : start time (Big-endian)
 //    Byte 4..7  : stop time  (Big-endian)
 //    Byte 8..11 : steps      (Big-endian)
-
-
 
 uint32_t getSessionCountFromEEPROM() {
   uint32_t count = 0;
@@ -1337,6 +1317,19 @@ void loop() {
 
   #ifdef GET_TIME_THROUGH_NTP
     periodicNtpUpdateMainLoopHandler();
+
+        // Simple reconnect logic if WiFi credentials exist but WiFi is lost
+    // static unsigned long lastWifiCheck = 0;
+    // const unsigned long wifiCheckInterval = 10000; // 10 seconds
+    // if (millis() - lastWifiCheck >= wifiCheckInterval) {
+    //   lastWifiCheck = millis();
+    //   if (areWifiCredentialsSet && (WiFi.status() != WL_CONNECTED)) {
+    //     Debug.println("Lost WiFi connection, attempting to reconnect...");
+    //     char ssidBuf[32], passBuf[32];
+    //     loadWifiCredentialsIntoBuffers(ssidBuf, passBuf);
+    //     connectWifi(ssidBuf, passBuf);
+    //   }
+   // }
   #endif
 
   #ifdef HAS_RTC_DS3231
