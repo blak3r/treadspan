@@ -37,10 +37,15 @@ public:
             if (millis() - lastTry > 5000) {
               lastTry = millis();
 
-              if( foundConsole ) {
-                connectToFoundConsole();
-              }
-              else {
+              if (foundConsole) {
+                // Only connect if scanning has completely stopped
+                if (!NimBLEDevice::getScan()->isScanning()) {
+                    Debug.println("Scan complete, attempting to connect...");
+                    connectToFoundConsole();
+                } else {
+                    Debug.println("Waiting for scan to finish...");
+                }
+              } else {
                 connectToConsoleViaBLE();
               }
             }
@@ -122,7 +127,10 @@ private:
                     mParent->foundConsoleAddress = advertisedDevice->getAddress();
                     mParent->foundConsole = true;
 
-                    //mParent->connectToFoundConsole();
+                    // IMPORTANT: I do not know why... but trying to connect immediately while the scan
+                    // is happening does not work.  Causes all kinds of issues such as onScanEnd never being triggered.
+                    // unhandled exceptions, etc.  I even tried delay(100);
+                    // mParent->connectToFoundConsole();
                 }
             }
         }
@@ -273,7 +281,7 @@ private:
 
         Debug.printf("Attempting to connect to: %s\n", foundConsoleAddress.toString().c_str());
         if (!consoleClient->connect(foundConsoleAddress)) {
-            Debug.println("Failed to connect to LifeSpan console.");
+            Debug.printf("Failed to connect to LifeSpan console.\n");
             consoleIsConnected = false;
             return;
         }
@@ -284,7 +292,7 @@ private:
 
         NimBLERemoteService* service = consoleClient->getService(CONSOLE_SERVICE_UUID);
         if (!service) {
-            Debug.println("Failed to find FFF0 service. Disconnecting...");
+            Debug.printf("Failed to find FFF0 service. Disconnecting...\n");
             consoleClient->disconnect();
             consoleIsConnected = false;
             return;
@@ -303,13 +311,13 @@ private:
 
         if (consoleNotifyCharacteristic->canNotify()) {
             consoleNotifyCharacteristic->subscribe(true, onConsoleNotify);
-            Debug.println("Subbed to notifications on FFF1.");
+            Debug.printf("Subbed to notifications on FFF1.\n");
         }
 
         // FFF2 = write
         consoleWriteCharacteristic = service->getCharacteristic(CONSOLE_CHAR_UUID_FFF2);
         if (!consoleWriteCharacteristic || !consoleWriteCharacteristic->canWrite()) {
-            Debug.println("FFF2 characteristic not found or not writable.");
+            Debug.printf("FFF2 characteristic not found or not writable.\n");
             consoleClient->disconnect();
             consoleIsConnected = false;
             return;
