@@ -3,7 +3,7 @@
  *
  * History:
  *   2025-03-01   0.9.6 - First release, BLE + TFT
- *   2026-03-15   1.0.7 - HW RTC Options, time setting via mobile app. 
+ *   2026-03-15   1.0.7 - HW RTC Options, time setting via mobile app.
  * Author: Blake Robertson
  * License: MIT
  *****************************************************************************/
@@ -86,7 +86,7 @@
   #define BOT_BUTTON 0
 #endif
 
-#if !defined(VERBOSE_LOGGING) 
+#if !defined(VERBOSE_LOGGING)
   #define VERBOSE_LOGGING 0
 #endif
 
@@ -255,10 +255,8 @@ void loadWiFiCredentialsFromEEPROM(char* ssid, char* password) {
   }
   password[MAX_SSID_LENGTH - 1] = '\0';
 
-  Debug.print("Loaded SSID: ");
-  Debug.println(ssid);
-  Debug.print("Loaded Password: ");
-  Debug.println(password);
+  Debug.printf("Loaded SSID: %s\n", ssid);
+  Debug.printf("Loaded Password: %s\n", password);
 }
 
 bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
@@ -267,7 +265,6 @@ bool loadWifiCredentialsIntoBuffers(char* ssidBuf, char* passwordBuf) {
   #else
     strncpy(ssidBuf, ssid, sizeof(ssidBuf));  // Developer mode... ssid/password are hardcoded.
     strncpy(passwordBuf, password, sizeof(ssidBuf));
-    //Debug.println("Using SSID from Program Memory named: %s", ssid);
   #endif
 
   Debug.printf("ssidBuf[0]: %02X, len1 %d len2 %d\n", ssidBuf[0], strlen(ssidBuf), strlen(passwordBuf));
@@ -297,7 +294,7 @@ bool connectWifi(const char* ssid, const char* password) {
   return WiFi.status() == WL_CONNECTED;
 }
 
-bool reconnectWifiIfNeccessary() {
+bool reconnectWifiIfNecessary() {
   static HasElapsed reconnectWifiTimer(10000);
 
   if( reconnectWifiTimer.isIntervalUp() ) {
@@ -322,14 +319,9 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 
 void setupWifi() {
   char ssid[32], password[32];
-
-  // Register the WiFi event handler
   WiFi.onEvent(WiFiEvent);
-
   areWifiCredentialsSet = loadWifiCredentialsIntoBuffers(ssid, password);  // loads from SSID/PASS from file system or program memory depending on build configs.
-
   Debug.printf("areWifiCredentialsSet: %d\n", areWifiCredentialsSet);
-
   if (areWifiCredentialsSet) {
     connectWifi(ssid, password);
   } else {
@@ -382,6 +374,7 @@ void periodicNtpUpdateMainLoopHandler() {
     }
     checkNtpResponse();
   }
+  reconnectWifiIfNecessary();
 }
 
 #endif // GET_TIME_THROUGH_NTP
@@ -911,7 +904,7 @@ void tftDrawBluetoothLogo24(int x, int y) {
 
 // Define an enum for the display metrics
 
-#define PDM_ALTERNATE 0 
+#define PDM_ALTERNATE 0
 #define PDM_SESSION_STEPS 1
 #define PDM_TODAYS_STEPS 2
 
@@ -1367,7 +1360,7 @@ void loop() {
 
     // Clear sessions if CLEAR_PIN is LOW (do once)
     if (!clearedSessions && digitalRead(CLEAR_PIN) == LOW) {
-      Debug.println("CLEAR_PIN is LOW, clearing all sessions...");
+      Debug.printf("CLEAR_PIN is LOW, clearing all sessions...\n");
       setSessionCountInEEPROM(0);
       EEPROM.commit();
       clearedSessions = true;
@@ -1377,7 +1370,7 @@ void loop() {
   if (isMobileAppConnected && isMobileAppSubscribed && !haveNotifiedMobileAppOfFirstSession) {
     haveNotifiedMobileAppOfFirstSession = true;
     currentSessionIndex = 0;
-    Debug.println("Mobile App subscribed, sending first session...");
+    Debug.printf("Mobile App subscribed, sending first session...\n");
     indicateNextSession();
   }
 
