@@ -17,13 +17,13 @@ inline float estimate_mph(int value) {
  * This class encapsulates the "Retro Console" logic that was previously
  * wrapped in #ifdef RETRO_MODE. 
  */
-class LifespanRetroConsoleTreadmillDevice : public TreadmillDevice {
+class TreadmillDeviceLifespanRetroConsole : public TreadmillDevice {
 public:
-    LifespanRetroConsoleTreadmillDevice() {
+    TreadmillDeviceLifespanRetroConsole() {
         // Constructor: you could parameterize pins or speeds if needed.
     }
 
-    virtual ~LifespanRetroConsoleTreadmillDevice() {}
+    virtual ~TreadmillDeviceLifespanRetroConsole() {}
 
     // Called once in Arduino setup()
     void setupHandler() override {

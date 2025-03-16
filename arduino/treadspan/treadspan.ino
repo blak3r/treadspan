@@ -97,11 +97,11 @@
 #include "globals.h"
 
 #if defined(OMNI_CONSOLE_MODE)
-  #include "LifespanOmniConsoleTreadmillDevice.h"
-  TreadmillDevice *treadmillDevice =  new LifespanOmniConsoleTreadmillDevice();
+  #include "TreadmillDeviceLifespanOmniConsole.h"
+  TreadmillDevice *treadmillDevice =  new TreadmillDeviceLifespanOmniConsole();
 #elif defined(RETRO_MODE)
-  #include "LifespanRetroConsoleTreadmillDevice.h"
-  TreadmillDevice *treadmillDevice =  new LifespanRetroConsoleTreadmillDevice();
+  #include "TreadmillDeviceLifespanRetroConsole.h"
+  TreadmillDevice *treadmillDevice =  new TreadmillDeviceLifespanRetroConsole();
 #else
   #error "You have not selected a TreadmillDevice Implementation."
 #endif
@@ -138,8 +138,9 @@ struct TreadmillSession {
 #define SSID_INDEX 0
 #define PASSWORDS_INDEX 32
 #define SESSIONS_START_INDEX 64
-#define MAX_SESSIONS ((512 - (64 + 4)) / 12)
 #define SESSION_SIZE_BYTES sizeof(TreadmillSession)
+#define MAX_SESSIONS ((EEPROM_SIZE - (SESSIONS_START_INDEX + 4)) / SESSION_SIZE_BYTES)
+
 
 
 #include "./DebugWrapper.h"
@@ -223,11 +224,12 @@ void setLed(uint8_t color, bool status) {
   digitalWrite(color, status);
 }
 
-#ifdef GET_TIME_THROUGH_NTP
+
 
 // ---------------------------------------------------------------------------
 // Wifi / NTP
 // ---------------------------------------------------------------------------
+#ifdef GET_TIME_THROUGH_NTP
 // NTP Configuration
 const char* ntpServer = "pool.ntp.org";
 const int ntpPort = 123;

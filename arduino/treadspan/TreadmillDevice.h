@@ -1,6 +1,5 @@
 #pragma once
 
-// Forward declare your base interface, in case it's in another file
 class TreadmillDevice {
 public:
     virtual ~TreadmillDevice() {}
