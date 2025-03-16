@@ -13,12 +13,12 @@ inline float estimate_mph(int value) {
 }
 
 // ---------------------------------------------------------------------------
-// LifespanOmniConsoleTreadmillDevice
+// TreadmillDeviceLifespanOmniConsole
 // ---------------------------------------------------------------------------
-class LifespanOmniConsoleTreadmillDevice : public TreadmillDevice {
+class TreadmillDeviceLifespanOmniConsole : public TreadmillDevice {
 public:
-    LifespanOmniConsoleTreadmillDevice() = default;
-    virtual ~LifespanOmniConsoleTreadmillDevice() {}
+    TreadmillDeviceLifespanOmniConsole() = default;
+    virtual ~TreadmillDeviceLifespanOmniConsole() {}
 
     /**
      * Called once from setup()
@@ -99,7 +99,7 @@ private:
     // -----------------------------------------------------------------------
     class InternalScanCallbacks : public NimBLEScanCallbacks {
     public:
-        InternalScanCallbacks(LifespanOmniConsoleTreadmillDevice* parent) : mParent(parent) {}
+        InternalScanCallbacks(TreadmillDeviceLifespanOmniConsole* parent) : mParent(parent) {}
         
         void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
             if (VERBOSE_LOGGING) {
@@ -129,7 +129,7 @@ private:
         }
 
     private:
-        LifespanOmniConsoleTreadmillDevice* mParent;
+        TreadmillDeviceLifespanOmniConsole* mParent;
     } mScanCallbacks{this};
 
     // -----------------------------------------------------------------------
@@ -137,7 +137,7 @@ private:
     // -----------------------------------------------------------------------
     class InternalClientCallback : public NimBLEClientCallbacks {
     public:
-        InternalClientCallback(LifespanOmniConsoleTreadmillDevice* parent) : mParent(parent) {}
+        InternalClientCallback(TreadmillDeviceLifespanOmniConsole* parent) : mParent(parent) {}
 
         void onConnect(NimBLEClient* pclient) override {
             Debug.println("Console client connected.");
@@ -150,7 +150,7 @@ private:
         }
 
     private:
-        LifespanOmniConsoleTreadmillDevice* mParent;
+        TreadmillDeviceLifespanOmniConsole* mParent;
     } mClientCallbacks{this};
 
     // -----------------------------------------------------------------------
@@ -160,11 +160,6 @@ private:
         NimBLERemoteCharacteristic* pCharacteristic,
         uint8_t* data, size_t length, bool isNotify) 
     {
-        // We need to figure out which LifespanOmniConsoleTreadmillDevice instance. 
-        // For simplicity, assume only one instance is used (common in Arduino).
-       // LifespanOmniConsoleTreadmillDevice* self = (LifespanOmniConsoleTreadmillDevice*)pCharacteristic->getServer();
-        // But NimBLE doesn't always store that. We'll keep a singleton approach or pass in user data. 
-        // For a simpler route, we'll just use a static pointer:
         if (!globalInstance) {
             return;
         }
@@ -173,7 +168,7 @@ private:
 
     // We'll store a single global pointer (singleton approach), so we can 
     // reference 'this' inside the static callback:
-    static LifespanOmniConsoleTreadmillDevice* globalInstance;
+    static TreadmillDeviceLifespanOmniConsole* globalInstance;
 
     void handleConsoleNotification(uint8_t* data, size_t length) {
         if (VERBOSE_LOGGING) {
@@ -366,5 +361,5 @@ private:
     }
 };
 
-// // Initialize the static pointer to null
-LifespanOmniConsoleTreadmillDevice* LifespanOmniConsoleTreadmillDevice::globalInstance = nullptr;
+// Initialize the static pointer to null
+TreadmillDeviceLifespanOmniConsole* TreadmillDeviceLifespanOmniConsole::globalInstance = nullptr;
