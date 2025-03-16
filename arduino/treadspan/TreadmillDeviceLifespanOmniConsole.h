@@ -36,7 +36,13 @@ public:
             static unsigned long lastTry = 0;
             if (millis() - lastTry > 5000) {
               lastTry = millis();
-              connectToConsoleViaBLE();
+
+              if( foundConsole ) {
+                connectToFoundConsole();
+              }
+              else {
+                connectToConsoleViaBLE();
+              }
             }
           } else {
             sendNextOpcodeIfAppropriate();
@@ -115,17 +121,16 @@ private:
                     NimBLEDevice::getScan()->stop();
                     mParent->foundConsoleAddress = advertisedDevice->getAddress();
                     mParent->foundConsole = true;
+
+                    //mParent->connectToFoundConsole();
                 }
             }
         }
 
         void onScanEnd(const NimBLEScanResults& results, int reason) override {
-            if (VERBOSE_LOGGING) {
-                Debug.printf("Scan Ended, reason: %d, devCount: %d\n", 
-                                      reason, results.getCount());
-            }
+            Debug.printf("BLE Scan Ended, reason: %d, devices seen: %d\n", reason, results.getCount());
             // Optionally restart scanning 
-            NimBLEDevice::getScan()->start(1000, false, true);
+            //NimBLEDevice::getScan()->start(1000, false, true);
         }
 
     private:
@@ -316,21 +321,18 @@ private:
 
       // Reset flags
       foundConsole = false;
-      //foundConsoleAddress = NimBLEAddress(""); // TODO
 
-      NimBLEScan* pBLEScan = NimBLEDevice::getScan();
-      pBLEScan->setScanCallbacks(&mScanCallbacks, false);
-      pBLEScan->setActiveScan(true);
-      pBLEScan->start(3, false);  // Scan for 1 second
+      NimBLEDevice::getScan()->setScanCallbacks(&mScanCallbacks, false);
+      NimBLEDevice::getScan()->start(3000, false, true);
 
       // NimBLE requires a small delay after scanning
-      delay(50);
+  //    delay(50);
 
-      if (foundConsole) {
-        connectToFoundConsole();
-      } else {
-        Debug.println("No LifeSpan-TM device found in scan window.");
-      }
+//       if (foundConsole) {
+//         connectToFoundConsole();
+//       } else {
+//         Debug.println("No LifeSpan-TM device found in scan window.");
+//       }
     }
 
     void sendNextOpcodeIfAppropriate() {
