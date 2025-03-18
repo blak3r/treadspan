@@ -46,9 +46,9 @@ in a cable tray under your desk if you really wanted to.
 * [Option 1: comes with a case - LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board with Shell Version](https://amzn.to/43eFNhn)
 * [Option 2: no case - LILYGO ESP32 T-Display Module for Arduino CH9102F Chip TTGO Development Board NO Case](https://amzn.to/43eFNhn)
 
-Version with the case does take a bit longer to ship in my experience, 
-As of writing, Feb 2025, the case version is \$17 + 9.50 shipping and the no case version is \$20 with free shipping. 
-If you have a 3D printer and are impatient you can print the case [Files available here](https://github.com/Xinyuan-LilyGO/TTGO-T-Display/tree/master/3d_file). 
+The case version has a much longer shipping estimate.  I've ordered it twice and they come within a week despite saying 2-3 weeks.
+In Feb 2025, the case version was \$17 + \$9.50 shipping and the no case version is \$20 with free shipping. 
+If you have a 3D printer and are impatient you can [print the case from these files](https://github.com/Xinyuan-LilyGO/TTGO-T-Display/tree/master/3d_file). 
 
 If the links provided have gone bad, here is what you're looking to buy.
 * Brand: LilyGo
@@ -62,7 +62,7 @@ DO NOT BUY THESE SIMILAR OPTIONS:
 * T-Display S3 ESP32-S3 1.9-inch ST7789 LCD Display Touchable Screen TTGO Wireless Module Welding Pin Development Board
 * T-Display-S3-Long 16MB Flash ESP32-S3 TTGO Development Board with 3.4-inch Touch Display TFT LCD Wireless Modules
 
-Technically, any ESP32 based Arduino should work.  I have loaded it on Arduino ESP32 and The suggested hardware is nice since it has an LCD on it so it'll 
+Technically, any ESP32 based Arduino should work.  I have loaded it on Arduino Nano ESP32 and The suggested hardware is nice since it has an LCD on it so it'll 
 be helpful if you don't have wifi configured properly... or want to know how many sessions are on the device etc.
 
 ## Mobile App Features
@@ -136,12 +136,11 @@ Here I include raw captures of the traffic over both the serial port and BLE as 
 
 ## Contributors Welcome
 
-- Would love some donations, spent at least $200 on an IOS Developer Account to publish to appstore, and evaluating hardware options. (Not to mention probably 50 hours of development)
+- Add support for more treadmill brands. 
 - Port the iOS App to Android. (AI tools should be able to do most of it)
-- The serial port version is likely out of reach for someone who has never used a breadboard before.  If someone wanted to 
-  sell assembled boards 
-  hardware for novices i'll gladly link you! 
-- Someone to document the full process of getting XCode setup, a developer certificate, how to put the phone into developer mode.
+- If someone wanted to sell preprogrammed Lily-Go T-Displays -or- sell special hardware versions (such as those with an RTC so wifi isn't needed)
+  or one with serial port passthrough for non bluetooth solutions. I'd link to your store. 
+- Non-technical folks, help spread the news on reddit and other social media sites.
 
 
 ## FAQS
@@ -205,6 +204,9 @@ LOW
 - Mobile App --> Arduino Nano ESP32 takes a lot longer than LilyGo.  Not sure it matters much but seems odd. 
 - See if we can compress space down so partition scheme doesn't need modified.
 
+## Misc Resources
+Big list of treadmills
+https://docs.google.com/spreadsheets/d/1Oihy89PCLrDhiFWW2XuBikO9wjaKsS5WaEMcrmGne-E/edit?pli=1&gid=0#gid=0
 
 ## Get Help / Support
 
