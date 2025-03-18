@@ -197,8 +197,8 @@ void setSystemTime( time_t epochTime) {
   tv.tv_sec = epochTime;
   tv.tv_usec = 0;
   settimeofday(&tv, NULL);
-  Debug.print("System time updated: ");
-  Debug.println(getFormattedTime());
+
+  Debug.printf("System time updated: %s %s %lu\n", getFormattedTimeYMD(), getFormattedTimeHMS(), (uint32_t) epochTime );
 
   wasTimeSet = true;
 }
@@ -355,7 +355,7 @@ void setSystemTime( time_t epochTime) {
 #endif // GET_TIME_THROUGH_NTP
 
 
-String getFormattedTime() {
+String getFormattedTimeHMS() {
   time_t now = time(nullptr);
   if (now < 100000) {
     return "TBD, NTP sync";
@@ -366,6 +366,20 @@ String getFormattedTime() {
 
   char buffer[30];
   strftime(buffer, sizeof(buffer), "%H:%M:%S", &timeinfo);
+  return String(buffer);
+}
+
+String getFormattedTimeYMD() {
+  time_t now = time(nullptr);
+  if (now < 100000) {
+    return "???";
+  }
+
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  char buffer[30];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d", &timeinfo);
   return String(buffer);
 }
 
@@ -579,7 +593,7 @@ unsigned long getTodaysSteps() {
 // Session Start/End
 // ---------------------------------------------------------------------------
 void sessionStartedDetected() {
-  Debug.printf("%s >> NEW SESSION Started!\n", getFormattedTime().c_str());
+  Debug.printf("%s >> NEW SESSION Started!\n", getFormattedTimeHMS().c_str());
   isTreadmillActive = true;
   currentSession.start = (uint32_t)time(nullptr);
 }
@@ -598,7 +612,7 @@ void sessionEndedDetected() {
     return;
   }
 
-  Debug.printf("%s << NEW SESSION Ended\n", getFormattedTime().c_str());
+  Debug.printf("%s << NEW SESSION Ended\n", getFormattedTimeHMS().c_str());
   printSessionDetails(currentSession, sessionsStored);
   recordSessionToEEPROM(currentSession);
 }
@@ -674,7 +688,7 @@ void updateLcd() {
 
   if (isTreadmillActive) {
     lcd.setCursor(0, 2);
-    lcd.printf("%s %s   ", getFormattedTime().c_str(), getCurrentSessionElapsed().c_str());
+    lcd.printf("%s %s   ", getFormattedTimeHMS().c_str(), getCurrentSessionElapsed().c_str());
     lcd.setCursor(0, 3);
     lcd.printf("Steps:%4d MPH: %.1f", steps, speedFloat);
   } else {
@@ -975,9 +989,10 @@ void tftClockScreen() {
   sprite.setTextSize(1);
   sprite.setFreeFont(&AGENCYB22pt7b);
   const int topLineHeight = 20;
-  sprite.drawString(getFormattedTime(), RES_X / 2, topLineHeight);
+  sprite.drawString(getFormattedTimeHMS(), RES_X / 2, topLineHeight);
   sprite.setFreeFont(0);
   sprite.setTextSize(2);
+  sprite.drawString(getFormattedTimeYMD(), RES_X / 2, RES_Y - 60);
   // TODO remove me, this is for debug purposes.
  // sprite.drawString(String(neverRecvCIDCount), RES_X - 15, RES_Y - 15);
   sprite.drawString("UTC", RES_X / 2, RES_Y - 20);

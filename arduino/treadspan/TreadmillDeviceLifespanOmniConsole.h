@@ -45,6 +45,14 @@ class TreadmillDeviceLifespanOmniConsole : public TreadmillDevice {
       return consoleIsConnected;
     }
 
+    bool isBle() override {
+      return true;
+    }
+
+    String getBleServiceUuid() override {
+      return CONSOLE_SERVICE_UUID;
+    }
+
 private:
     // -----------------------------------------------------------------------
     // Constants / OpCodes
