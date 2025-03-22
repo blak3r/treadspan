@@ -47,3 +47,5 @@ Package.resolved
 /screenshots/new-icon-1024.png
 /arduino/log-to-file.sh
 /arduino/treadspan/archive/*
+/arduino/logs/*
+/arduino/*.sh
