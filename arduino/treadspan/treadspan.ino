@@ -308,8 +308,8 @@ void setSystemTime( time_t epochTime) {
   byte ntpPacketBuffer[NTP_PACKET_SIZE];
 
   // Timer variables
-  unsigned long lastNtpRequest = 0;
-  unsigned long ntpUpdateInterval = 3000;  // eventually 600000 (10 mins), but start short for quick sync
+  volatile unsigned long lastNtpRequest = 0;
+  volatile unsigned long ntpUpdateInterval = 60*1000;  // eventually 600000 (10 mins), but start short for quick sync
 
   void sendNtpRequest() {
     Debug.printf("Sending NTP request...\n");
@@ -325,20 +325,35 @@ void setSystemTime( time_t epochTime) {
     ntpUDP.write(ntpPacketBuffer, NTP_PACKET_SIZE);
     ntpUDP.endPacket();
 
+   // configTime(0, 0, "pool.ntp.org");
     lastNtpRequest = millis();
   }
 
   void checkNtpResponse() {
     int packetSize = ntpUDP.parsePacket();
     if (packetSize >= NTP_PACKET_SIZE) {
-      Debug.println("NTP response received!");
+      Debug.printf("NTP response received! size=%d\n", packetSize);
 
       ntpUDP.read(ntpPacketBuffer, NTP_PACKET_SIZE);
+      ntpUDP.flush();
       unsigned long highWord = word(ntpPacketBuffer[40], ntpPacketBuffer[41]);
       unsigned long lowWord = word(ntpPacketBuffer[42], ntpPacketBuffer[43]);
+      
       time_t epochTime = (highWord << 16 | lowWord) - 2208988800UL;  // Convert to UNIX time
 
-      ntpUpdateInterval = 600000;  // set to 10 minutes after first success
+      // Right after ntpUDP.read(ntpPacketBuffer, NTP_PACKET_SIZE);
+      Serial.println("=== RAW NTP DATA ===");
+      for (int i = 0; i < NTP_PACKET_SIZE; i++) {
+        Serial.printf("%02X ", ntpPacketBuffer[i]);
+      }
+      Serial.println("\n====================");
+
+      if( (uint32_t) epochTime == 0 || (uint32_t) epochTime == (uint32_t) 0xFFFFFFFF) {
+        Debug.printf("Invalid packet received! %X", epochTime);
+        return;
+      }
+
+      ntpUpdateInterval = (unsigned long) 60*10*1000;  // set to 10 minutes after first success
       setSystemTime(epochTime);
     }
   }
@@ -346,9 +361,13 @@ void setSystemTime( time_t epochTime) {
   void periodicNtpUpdateMainLoopHandler() {
     if (WiFi.status() == WL_CONNECTED) {
       if ((millis() - lastNtpRequest) >= ntpUpdateInterval) {
+        ntpUpdateInterval = 10*60*1000;
         sendNtpRequest();
+        delay(100);
       }
-      checkNtpResponse();
+      else {
+        checkNtpResponse();
+      }
     }
     //reconnectWifiIfNecessary();
   }
