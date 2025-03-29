@@ -79,6 +79,21 @@ class DebugWrapper {
     #endif
   }
 
+  // A simple variadic printf implementation.
+  int printf_noTs(const char* format, ...) {
+    #ifdef ENABLE_DEBUG
+      char buffer[256];  // Adjust buffer size as needed
+      va_list args;
+      va_start(args, format);
+      int ret = vsnprintf(buffer, sizeof(buffer), format, args);
+      va_end(args);
+      Serial.printf("%s", buffer);
+      return ret;
+    #else
+      return 0;
+    #endif
+  }
+
   // Overload for write (byte array)
   size_t write(const uint8_t* buffer, size_t size) {
     #ifdef ENABLE_DEBUG

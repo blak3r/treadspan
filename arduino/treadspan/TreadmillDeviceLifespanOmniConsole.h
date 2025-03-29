@@ -9,7 +9,7 @@
  * Simple helper to estimate miles-per-hour from the integer “speed” value.
  * In your original code, you used "0.00435 * value - 0.009".
  */
-inline float estimate_mph(int value) {
+inline float convertToMPH(int value) {
     return (0.00435f * value) - 0.009f;
 }
 
@@ -25,12 +25,12 @@ class TreadmillDeviceLifespanOmniConsole : public TreadmillDevice {
      * Called once from setup()
      */
     void setupHandler() override {
-      // No setup needed for Bluetooth Low Energy. 
+      // No setup needed for Bluetooth Low Energy.
       // Used by other implementations such as Retro Console which needs to configure Hardware Uarts
     }
 
     /**
-     * Called repeatedly from main loop(), 
+     * Called repeatedly from main loop(),
      * You need to handle reconnecting as well as getting actual data from device.
      */
     void loopHandler() override {
@@ -59,7 +59,7 @@ private:
     // -----------------------------------------------------------------------
     static constexpr const char* CONSOLE_NAME_PREFIX = "LifeSpan-TM";
     static constexpr const char* CONSOLE_SERVICE_UUID   = "0000fff0-0000-1000-8000-00805f9b34fb";
-    static constexpr const char* CONSOLE_CHAR_UUID_FFF1 = "0000fff1-0000-1000-8000-00805f9b34fb"; 
+    static constexpr const char* CONSOLE_CHAR_UUID_FFF1 = "0000fff1-0000-1000-8000-00805f9b34fb";
     static constexpr const char* CONSOLE_CHAR_UUID_FFF2 = "0000fff2-0000-1000-8000-00805f9b34fb";
 
     static constexpr uint8_t OPCODE_STEPS     = 0x88;
@@ -70,7 +70,7 @@ private:
     static constexpr uint8_t OPCODE_SPEED     = 0x82;
 
     // We'll request these opcodes in a round-robin fashion, we request STEPS and STATUS
-    // more frequently so we're more responsive 
+    // more frequently so we're more responsive
     static constexpr uint8_t consoleCommandOrder[10] = {
         OPCODE_STEPS,    OPCODE_STATUS,   OPCODE_DURATION, OPCODE_STATUS,   OPCODE_DISTANCE,
         OPCODE_STEPS,    OPCODE_STATUS,   OPCODE_CALORIES, OPCODE_STATUS,   OPCODE_SPEED
@@ -100,7 +100,7 @@ private:
     int8_t   lastSessionStatus = -1;
 
 private:
-    // We'll store a single global pointer (singleton approach), so we can 
+    // We'll store a single global pointer (singleton approach), so we can
     // reference 'this' inside the static callback:
     static TreadmillDeviceLifespanOmniConsole* globalInstance;
     HasElapsed connectionRetryTimer;
@@ -138,7 +138,7 @@ private:
     }
 
     // -----------------------------------------------------------------------
-    // Connection Step 2: 
+    // Connection Step 2:
     // For each device found, see if it matches by device name
     // If found, set foundConsole and foundConsoleAddress.
     // -----------------------------------------------------------------------
@@ -147,13 +147,13 @@ private:
         InternalScanCallbacks(TreadmillDeviceLifespanOmniConsole* parent) : mParent(parent) {}
         void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
           if (VERBOSE_LOGGING) {
-              Debug.printf("Advertised Device: %s\n", 
+              Debug.printf("Advertised Device: %s\n",
                   advertisedDevice->toString().c_str());
           }
           if (advertisedDevice->haveName()) {
               std::string devName = advertisedDevice->getName();
               if (devName.rfind(CONSOLE_NAME_PREFIX, 0) == 0) {
-                  Debug.printf("Found 'LifeSpan-TM' at %s\n", 
+                  Debug.printf("Found 'LifeSpan-TM' at %s\n",
                       advertisedDevice->getAddress().toString().c_str());
                   // Mark found so we can connect
                   NimBLEDevice::getScan()->stop();
@@ -176,7 +176,7 @@ private:
     } mScanCallbacks{this};
 
     // -----------------------------------------------------------------------
-    // Connection Step 3: 
+    // Connection Step 3:
     // Now that we've found the device, we connect and subscribe to notifications
     // We setup some callbacks, onConsoleNotify that is called if subscribe success
     // -----------------------------------------------------------------------
@@ -227,7 +227,7 @@ private:
     }
 
     // -----------------------------------------------------------------------
-    // Connection Step 4: 
+    // Connection Step 4:
     // Upon successful characteristic subscription, we set mParent->consoleIsConnected
     // We also setup callbacks in case we get disconnected.
     // -----------------------------------------------------------------------
@@ -250,7 +250,7 @@ private:
     // -----------------------------------------------------------------------
     // GETTING STEP DATA FROM THE TREADMILL
     // -----------------------------------------------------------------------
-    // 
+    //
     // To get data from the Omni Console. You follow this procedure.
     // 1. Subscribe to the notification characteristic (FFF1) (see: connectToFoundConsole)
     // 2. Write a command payload to the WRITE Characteristic (FFF2). (see: requestDataFromOmniConsole)
@@ -285,7 +285,7 @@ private:
 
     static void onConsoleNotify(
         NimBLERemoteCharacteristic* pCharacteristic,
-        uint8_t* data, size_t length, bool isNotify) 
+        uint8_t* data, size_t length, bool isNotify)
     {
         if (!globalInstance) {
             return;
@@ -297,7 +297,7 @@ private:
       if (VERBOSE_LOGGING) {
           Debug.printf("RESP %02X: ", lastConsoleCommandIndex);
           for (size_t i = 0; i < length; i++) {
-              Debug.printf("%02X ", data[i]);
+              Debug.printf_noTs("%02X ", data[i]);
           }
           Debug.println("");
       }
@@ -305,23 +305,24 @@ private:
       // Parse the response
       switch (lastConsoleCommandOpcode) {
         case OPCODE_STEPS:
-          steps = data[2] * 256 + data[3];
-          Debug.printf("Steps: %d\n", steps);
+          gSteps = data[2] * 256 + data[3];
+          Debug.printf("Steps: %d\n", gSteps);
           break;
 
         case OPCODE_CALORIES:
-          // e.g. int calories = data[2] * 256 + data[3];
-          // Debug.printf("Calories: %d\n", calories);
+          gCalories = data[2] * 256 + data[3];
+          Debug.printf("Calories: %d\n", gCalories);
           break;
 
         case OPCODE_DISTANCE:
-          // e.g. int distance = data[2] * 256 + data[3];
+          gDistance = data[2] * 256 + data[3];
+          // TODO finish, set to same unit as FTMS
           // Debug.printf("Distance: %d\n", distance);
           break;
 
         case OPCODE_SPEED: {
           int avgSpeedInt = data[2] * 256 + data[3];
-          float avgSpeedFloat = estimate_mph(avgSpeedInt);
+          float avgSpeedFloat = convertToMPH(avgSpeedInt);
           Debug.printf("Avg Speed: %d => %.1f MPH\n", avgSpeedInt, avgSpeedFloat);
           break;
         }
@@ -330,7 +331,7 @@ private:
           if (wasTimeSet) {
             // Fixes issue where device powers on after a session on treadmill had started (or if time wasn't set when session started)
             uint32_t sessionStartTime = (uint32_t)time(nullptr) - ((data[4]) + (data[3] * 60) + (data[2] * 60 * 60));
-            currentSession.start = sessionStartTime;
+            gCurrentSession.start = sessionStartTime;
           }
           break;
 
@@ -360,17 +361,17 @@ private:
           switch (status) {
             case STATUS_RUNNING:
               Debug.println("Treadmill: RUNNING");
-              if (!isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1) {
+              if (!gIsTreadmillActive && timesSessionStatusHasBeenTheSame >= 1) {
                   sessionStartedDetected();
               }
               break;
             case STATUS_PAUSED:
             case STATUS_SUMMARY_SCREEN:
             case STATUS_STANDBY:
-              Debug.printf("Treadmill: %s\n", 
+              Debug.printf("Treadmill: %s\n",
                   (status==STATUS_PAUSED ? "PAUSED" :
                   (status==STATUS_SUMMARY_SCREEN ? "SUMMARY_SCREEN" : "STANDBY")));
-              if (isTreadmillActive && timesSessionStatusHasBeenTheSame >= 1) {
+              if (gIsTreadmillActive && timesSessionStatusHasBeenTheSame >= 1) {
                   sessionEndedDetected();
               }
               break;
@@ -392,7 +393,7 @@ private:
       // If we get to the max interval, then we assume the command got lost in transit.
       static HasElapsed minUpdateInterval(consoleCommandUpdateIntervalMin);
       static HasElapsed maxUpdateInterval(consoleCommandUpdateIntervalMax);
-      
+
       uint32_t millisSinceLast = millis() - lastConsoleCommandSentAt;
       bool canSend = (commandResponseReceived && minUpdateInterval.isIntervalUp());
       bool forcedSend = maxUpdateInterval.isIntervalUp();

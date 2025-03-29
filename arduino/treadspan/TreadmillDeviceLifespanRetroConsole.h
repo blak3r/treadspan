@@ -159,7 +159,7 @@ private:
         // parse steps if the last request was steps
         if (lastRequestType == LAST_REQUEST_IS_STEPS) {
             // from original code: steps = [3]*256 + [4]
-            steps = (uint8_t)uart2Buf[3] * 256 + (uint8_t)uart2Buf[4];
+            gSteps = (uint8_t)uart2Buf[3] * 256 + (uint8_t)uart2Buf[4];
             lastRequestType = 0;
         }
 
@@ -185,12 +185,12 @@ private:
             // In your code, 50 meant "off"
             if (speedInt == 50) {
                 // treadmill off
-                if (isTreadmillActive) {
+                if (gIsTreadmillActive) {
                     sessionEndedDetected();
                 }
             } else if (speedInt > 50) {
                 // treadmill on
-                if (!isTreadmillActive) {
+                if (!gIsTreadmillActive) {
                     sessionStartedDetected();
                 }
             }

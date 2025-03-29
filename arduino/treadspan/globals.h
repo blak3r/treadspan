@@ -12,12 +12,17 @@ struct TreadmillSession {
 // ---------------------------------------------------------------------------
 // Global Variables
 // ---------------------------------------------------------------------------
-extern int steps;
-extern int calories;
-extern bool wasTimeSet;
-extern TreadmillSession currentSession;
+extern uint32_t gSteps;
+extern float gSpeedInKm; // Represents the current speed of the treadmill as a float.
+extern uint16_t gCalories;
+extern float gSpeedFloat;
+extern uint32_t gDistance;
+extern uint16_t gDurationInSecs;
 
-extern bool isTreadmillActive;
+extern bool wasTimeSet;
+extern TreadmillSession gCurrentSession;
+
+extern bool gIsTreadmillActive;
 extern DebugWrapper Debug;
 
 
