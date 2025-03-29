@@ -3,7 +3,8 @@
  *
  * History:
  *   2025-03-01   0.9.6 - First release, BLE + TFT
- *   2026-03-15   1.0.7 - HW RTC Options, time setting via mobile app.
+ *   2025-03-15   1.0.7 - HW RTC Options, time setting via mobile app.
+ *   2025-03-23   1.1.8 - FTMS Device / Autodetect
  * Author: Blake Robertson
  * License: MIT
  *****************************************************************************/
@@ -24,15 +25,16 @@
  *                                      CONFIGURATION
  ******************************************************************************************/
 
-#define FW_VERSION "v1.0.8"
+#define FW_VERSION "v1.1.8c"
 
 /******************************************************************************************
  * 🏃 TREADMILL MODE SELECTION 🏃
  * Uncomment the mode that matches your treadmill setup.
  ******************************************************************************************/
 
-#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
-//#define RETRO_MODE 1         // 🟢 Use Serial Port for Sessions (Requires special hardware)
+//#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
+//#define RETRO_MODE 1            // 🟢 Use Serial Port for Sessions (Requires special hardware)
+#define FTMS_MODE 1               // Most Common - supports all treadmills which implemented FTMS
 
 /******************************************************************************************
  * ⚙️ GENERAL SETTINGS ⚙️
@@ -40,7 +42,7 @@
  ******************************************************************************************/
 
 #define ENABLE_DEBUG 1                          // 🔍 Allows logs to be printed to Serial
-#define VERBOSE_LOGGING 0                       // 🔍 Enable verbose BLE/Serial logging (set to 1 for more logs)
+#define VERBOSE_LOGGING 1                       // 🔍 Enable verbose BLE/Serial logging (set to 1 for more logs)
 #define HAS_TFT_DISPLAY 1                       // 🖥️ Enable TFT display (LilyGo hardware)
 #define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1     // 📡 Load WiFi credentials from EEPROM
 #define INCLUDE_IMPROV_SERIAL 1                 // ⚡ Configure WiFi via Flash Installer
@@ -97,12 +99,19 @@
 #include "TreadmillDevice.h"
 #include "globals.h"
 
+#include "TreadmillDeviceLifespanOmniConsole.h"
+#include "TreadmillDeviceLifespanRetroConsole.h"
+#include "TreadmillDeviceFTMS.h"
+  
 #if defined(OMNI_CONSOLE_MODE)
   #include "TreadmillDeviceLifespanOmniConsole.h"
   TreadmillDevice *treadmillDevice =  new TreadmillDeviceLifespanOmniConsole();
 #elif defined(RETRO_MODE)
   #include "TreadmillDeviceLifespanRetroConsole.h"
   TreadmillDevice *treadmillDevice =  new TreadmillDeviceLifespanRetroConsole();
+#elif defined(FTMS_MODE)
+  #include "TreadmillDeviceFTMS.h"
+  TreadmillDevice *treadmillDevice =  new TreadmillDeviceFTMS();
 #else
   #error "You have not selected a TreadmillDevice Implementation."
 #endif
@@ -166,18 +175,21 @@ NimBLECharacteristic* timeReadCharacteristic = nullptr;   // NEW
 NimBLECharacteristic* timeWriteCharacteristic = nullptr;  // NEW
 
 // COMMON STATE VARIABLES (RETRO / OMNI)
-int steps = 0;
-int calories = 0;         // only omni console mode.
-int distance = 0;         // only omni console mode
-int avgSpeedInt = 0;      // only omni console mode.
-float avgSpeedFloat = 0;  // only omni console
-int speedInt = 0;
-float speedFloat = 0;
-boolean isTreadmillActive = 0;
+uint32_t gSteps = 0;
+uint16_t gCalories = 0;         
+uint32_t gDistance = 0;        
+bool gIsTreadmillActive = 0;
+float gSpeedFloat = 0;
+uint16_t gDurationInSecs = 0;
+
+//int avgSpeedInt = 0;      // only omni console mode.
+//float avgSpeedFloat = 0;  // only omni console
+//int speedInt = 0;
+
 // NEW: Global variables for tracking today's steps
 String lastRecordedDate = "";       //YYYY-MM-DD
 unsigned long totalStepsToday = 0;  //
-TreadmillSession currentSession;
+TreadmillSession gCurrentSession;
 
 
 //------------------- COMMON TIME SETTING --------------------//
@@ -270,16 +282,19 @@ void setSystemTime( time_t epochTime) {
     return WiFi.status() == WL_CONNECTED;
   }
 
-  bool reconnectWifiIfNecessary() {
+  void reconnectWifiIfNecessary() {
     static HasElapsed reconnectWifiTimer(30000);
 
-    if( reconnectWifiTimer.isIntervalUp() ) {
-      if (areWifiCredentialsSet && (WiFi.status() != WL_CONNECTED)) {
+    if( WiFi.status() != WL_CONNECTED && areWifiCredentialsSet ) {
+      if( reconnectWifiTimer.isIntervalUp() ) {
+        Debug.printf("Int is up\n");
         Debug.printf("Lost WiFi connection, attempting to reconnect...\n");
         char ssidBuf[32], passBuf[32];
         loadWifiCredentialsIntoBuffers(ssidBuf, passBuf);
         connectWifi(ssidBuf, passBuf);
       }
+    } else {
+      reconnectWifiTimer.reset(); // reset it back to 30 so we don't immediately retry after losing connection.
     }
   }
 
@@ -342,11 +357,11 @@ void setSystemTime( time_t epochTime) {
       time_t epochTime = (highWord << 16 | lowWord) - 2208988800UL;  // Convert to UNIX time
 
       // Right after ntpUDP.read(ntpPacketBuffer, NTP_PACKET_SIZE);
-      Serial.println("=== RAW NTP DATA ===");
+      Debug.println("=== RAW NTP DATA ===");
       for (int i = 0; i < NTP_PACKET_SIZE; i++) {
-        Serial.printf("%02X ", ntpPacketBuffer[i]);
+        Debug.printf_noTs("%02X ", ntpPacketBuffer[i]);
       }
-      Serial.println("\n====================");
+      Debug.println("\n====================");
 
       if( (uint32_t) epochTime == 0 || (uint32_t) epochTime == (uint32_t) 0xFFFFFFFF) {
         Debug.printf("Invalid packet received! %X", epochTime);
@@ -369,7 +384,7 @@ void setSystemTime( time_t epochTime) {
         checkNtpResponse();
       }
     }
-    //reconnectWifiIfNecessary();
+    reconnectWifiIfNecessary();
   }
 #endif // GET_TIME_THROUGH_NTP
 
@@ -601,8 +616,8 @@ unsigned long getTodaysSteps() {
     totalStepsToday = 0;
   }
 
-  if (isTreadmillActive) {
-    return totalStepsToday + steps;
+  if (gIsTreadmillActive) {
+    return totalStepsToday + gSteps;
   }
 
   return totalStepsToday;
@@ -613,27 +628,27 @@ unsigned long getTodaysSteps() {
 // ---------------------------------------------------------------------------
 void sessionStartedDetected() {
   Debug.printf("%s >> NEW SESSION Started!\n", getFormattedTimeHMS().c_str());
-  isTreadmillActive = true;
-  currentSession.start = (uint32_t)time(nullptr);
+  gIsTreadmillActive = true;
+  gCurrentSession.start = (uint32_t)time(nullptr);
 }
 
 void sessionEndedDetected() {
-  isTreadmillActive = false;
-  currentSession.stop = (uint32_t)time(nullptr);
-  currentSession.steps = steps;
+  gIsTreadmillActive = false;
+  gCurrentSession.stop = (uint32_t)time(nullptr);
+  gCurrentSession.steps = gSteps;
 
-  if (currentSession.steps > 50000) {
-    // Debug.println("ERROR: Session steps too large, skipping save.");
+  if (gCurrentSession.steps > 50000) {
+    Debug.println("ERROR: Session steps too large, skipping save.");
     return;
   }
-  if (!currentSession.start) {
-    // Debug.println("ERROR: Session had no start time, skipping save.");
+  if (!gCurrentSession.start) {
+    Debug.println("ERROR: Session had no start time, skipping save.");
     return;
   }
 
-  Debug.printf("%s << NEW SESSION Ended\n", getFormattedTimeHMS().c_str());
-  printSessionDetails(currentSession, sessionsStored);
-  recordSessionToEEPROM(currentSession);
+  Debug.printf("<< NEW SESSION Ended!\n");
+  printSessionDetails(gCurrentSession, sessionsStored);
+  recordSessionToEEPROM(gCurrentSession);
 }
 
 // ---------------------------------------------------------------------------
@@ -660,10 +675,10 @@ void simulateNewSession() {
 #ifdef LCD_4x20_ENABLED
 String getCurrentSessionElapsed() {
   time_t now = time(nullptr);
-  if (currentSession.start == 0 || now < currentSession.start) {
+  if (gCurrentSession.start == 0 || now < gCurrentSession.start) {
     return "00:00:00";
   }
-  uint32_t elapsed = now - currentSession.start;
+  uint32_t elapsed = now - gCurrentSession.start;
   uint32_t hours = elapsed / 3600;
   uint32_t minutes = (elapsed % 3600) / 60;
   uint32_t seconds = elapsed % 60;
@@ -705,11 +720,11 @@ void updateLcd() {
   }
   pageStyle = (pageStyle + 1) % 4;
 
-  if (isTreadmillActive) {
+  if (gIsTreadmillActive) {
     lcd.setCursor(0, 2);
     lcd.printf("%s %s   ", getFormattedTimeHMS().c_str(), getCurrentSessionElapsed().c_str());
     lcd.setCursor(0, 3);
-    lcd.printf("Steps:%4d MPH: %.1f", steps, speedFloat);
+    lcd.printf("Steps:%4d MPH: %.1f", gSteps, gSpeedFloat);
   } else {
     lcd.setCursor(0, 2);
     lcd.print("Save Sessions On App");
@@ -950,7 +965,7 @@ void tftRunningScreen(uint8_t primaryDisplayMetric) {
 
   switch( primaryDisplayMetric ) {
     case PDM_SESSION_STEPS:
-      metricValue = steps;
+      metricValue = gSteps;
       displayMetricLabel = false;
       break;
     case PDM_TODAYS_STEPS:
@@ -958,10 +973,10 @@ void tftRunningScreen(uint8_t primaryDisplayMetric) {
       break;
     case PDM_ALTERNATE:
     default:
-      if(isTreadmillActive) {
+      if(gIsTreadmillActive) {
         // Alternate every 3 seconds
         if( (altToggle++ % 6) > 3) {
-          metricValue = steps;
+          metricValue = gSteps;
           metricLabel = sessionLabel;
         }
       }
@@ -989,7 +1004,7 @@ void tftRunningScreen(uint8_t primaryDisplayMetric) {
   sprite.drawString(String(sessionsStored), sessionsStoredX, sessionsStoredY);
 
   // Displays a red dot in upper right.
-  if (isTreadmillActive && recordIndicator) {
+  if (gIsTreadmillActive && recordIndicator) {
     sprite.fillCircle(5, 5, 5, TFT_RED);  // TOP_RIGHT LOCATION
   }
   recordIndicator = !recordIndicator;
@@ -1014,7 +1029,7 @@ void tftClockScreen() {
   sprite.drawString(getFormattedTimeYMD(), RES_X / 2, RES_Y - 60);
   // TODO remove me, this is for debug purposes.
  // sprite.drawString(String(neverRecvCIDCount), RES_X - 15, RES_Y - 15);
-  sprite.drawString("UTC", RES_X / 2, RES_Y - 20);
+  sprite.drawString("Pacific Time", RES_X / 2, RES_Y - 20);
   sprite.pushSprite(0, 0);
 }
 
@@ -1321,7 +1336,7 @@ void setup() {
   treadmillDevice->setupHandler();
 
   #ifdef INCLUDE_IMPROV_SERIAL
-    improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "My-Device-9a4c2b", FW_VERSION, "TreadSpan");
+    improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, NimBLEDevice::getAddress().toString().c_str(), FW_VERSION, "TreadSpan");
     improvSerial.onImprovError(onImprovWiFiErrorCb);
     improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
     improvSerial.setCustomConnectWiFi(connectWifi);  // Optional

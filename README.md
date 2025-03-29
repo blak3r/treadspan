@@ -187,12 +187,17 @@ control it through the mobile app (you would also need the more complicated hard
 ## TODOs (Things actively working on)
 HIGH
 - ~~put code in place for fixing duration if time not set at start (mobile app shouldnt crash)~~
+- ~~did i remove the reconnectWifiIfNecessary(); in periodicNtpUpdate~~
+- NTP... go to the config_time method?
+- Mobile App - Display total steps 
+- FTMS - need a means of converting distance --> steps.
+- 
 
 MED
 - ~~WIFI Reconnect code on Arduino.~~
 - Future proof the BLE protocol by adding a few additional options.
 -- Payload Version
--- Ability to include calories, average speed, etc if we wanted to log workouts also.
+-- Ability to include distance, calories, average speed, etc if we wanted to log workouts also.
 -- ~~Send time to device, Would be useful for an RTC based version.~~
 
 
@@ -205,8 +210,10 @@ LOW
 - See if we can compress space down so partition scheme doesn't need modified.
 
 ## Misc Resources
-Big list of treadmills
-https://docs.google.com/spreadsheets/d/1Oihy89PCLrDhiFWW2XuBikO9wjaKsS5WaEMcrmGne-E/edit?pli=1&gid=0#gid=0
+
+* https://docs.google.com/spreadsheets/d/1Oihy89PCLrDhiFWW2XuBikO9wjaKsS5WaEMcrmGne-E/edit?pli=1&gid=0#gid=0 - Big list of treadmills
+* https://kinni.co/devices/ - Kinni's list of FTMS devices.
+* https://github.com/lefty01/ESP32_TTGO_FTMS - Don't have a compatible treadmill and willing to hack around? See this project.
 
 ## Get Help / Support
 
