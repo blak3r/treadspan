@@ -45,8 +45,8 @@
 #define VERBOSE_LOGGING 1                       // 🔍 Enable verbose BLE/Serial logging (set to 1 for more logs)
 #define HAS_TFT_DISPLAY 1                       // 🖥️ Enable TFT display (LilyGo hardware)
 #define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1     // 📡 Load WiFi credentials from EEPROM
-#define INCLUDE_IMPROV_SERIAL 1                 // ⚡ Configure WiFi via Flash Installer
-#define GET_TIME_THROUGH_NTP 0                  // 📡 Enables WIFI to get time via NTP
+//#define INCLUDE_IMPROV_SERIAL 1                 // ⚡ Configure WiFi via Flash Installer (must be disabled when GET_TIME_THROUGH_NTP is undefined)
+//#define GET_TIME_THROUGH_NTP 0                  // 📡 Enables WIFI to get time via NTP
 #define HAS_RTC_DS3231                        // ⏰ UNCOMMON: Enable support for DS3231 Real-Time Clock (RTC)
 //#define SESSION_SIMULATION_BUTTONS_ENABLED 1  // 🕹️ Enable test buttons for session simulation
 //#define LCD_4x20_ENABLED 1                    // 🖨️ UNCOMMON: Enable 4x20 I2C LCD screen support
@@ -92,6 +92,12 @@
   #define VERBOSE_LOGGING 0
 #endif
 
+#if defined(GET_TIME_THROUGH_NTP)
+  const bool getTimeThroughNtp = true;
+#else
+  const bool getTimeThroughNtp = false;
+#endif
+
 #if !defined(HAS_RTC_DS3231) && !defined(GET_TIME_THROUGH_NTP)
   #error "You need to have at least one defined TIME method, NTP or RTC"
 #endif
@@ -120,8 +126,6 @@
   #include "RTClib.h"
   RTC_DS3231 rtc;
   boolean rtcFound = false;
-  unsigned long lastRtcRetrieveTime = 0;
-  const unsigned long rtcRetrieveInterval = 10 * 60 * 1000; // 10 minutes in milliseconds
   void setSystemTime(time_t); // forward declaration
   
   void setSystemTimeFromRtc() {
@@ -131,15 +135,12 @@
     setSystemTime(unixTime);
   }
   void periodicRtcDS3231TimeRetriever() {
-    unsigned long currentMillis = millis();
+    static HasElapsed rtcTimeRetreiverTimer(10*60*1000);
     // Check if 10 minutes have elapsed
-    if (rtcFound && (currentMillis - lastRtcRetrieveTime >= rtcRetrieveInterval)) {
-        lastRtcRetrieveTime = currentMillis; // Update last run time
+    if (rtcFound && rtcTimeRetreiverTimer.isIntervalUp()) {
         setSystemTimeFromRtc();
     }
   }
-
-
 #endif
 
 // EEPROM Configuration
@@ -1046,15 +1047,9 @@ void tftUpdateDisplay() {
 
   //  Debug.printf("choice = %d, but: %d, bot: %d\n", choice, digitalRead(TOP_BUTTON), digitalRead(BOT_BUTTON) );
 
-  if (!areWifiCredentialsSet) {
+  if ( getTimeThroughNtp && !areWifiCredentialsSet) {
     tftWifiStatusScreen(0, "");
-  } else if (
-  #ifdef GET_TIME_THROUGH_NTP
-    WiFi.status() != WL_CONNECTED
-  #else
-    true  // If no NTP, then we can skip this check
-  #endif
-  ) {
+  } else if ( getTimeThroughNtp && WiFi.status() != WL_CONNECTED ) {
     char tempSsidBuf[32], tempPasswordBuf[32];
     #ifdef GET_TIME_THROUGH_NTP
       loadWifiCredentialsIntoBuffers(tempSsidBuf, tempPasswordBuf);
