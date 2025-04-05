@@ -25,16 +25,16 @@
  *                                      CONFIGURATION
  ******************************************************************************************/
 
-#define FW_VERSION "v1.1.8c"
+#define FW_VERSION "v1.1.9"
 
 /******************************************************************************************
  * 🏃 TREADMILL MODE SELECTION 🏃
  * Uncomment the mode that matches your treadmill setup.
  ******************************************************************************************/
 
-//#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
+#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
 //#define RETRO_MODE 1            // 🟢 Use Serial Port for Sessions (Requires special hardware)
-#define FTMS_MODE 1               // Most Common - supports all treadmills which implemented FTMS
+//#define FTMS_MODE 1               // Most Common - supports all treadmills which implemented FTMS
 
 /******************************************************************************************
  * ⚙️ GENERAL SETTINGS ⚙️
@@ -46,8 +46,8 @@
 #define HAS_TFT_DISPLAY 1                       // 🖥️ Enable TFT display (LilyGo hardware)
 #define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1     // 📡 Load WiFi credentials from EEPROM
 #define INCLUDE_IMPROV_SERIAL 1                 // ⚡ Configure WiFi via Flash Installer
-#define GET_TIME_THROUGH_NTP 1                  // 📡 Enables WIFI to get time via NTP
-//#define HAS_RTC_DS3231                        // ⏰ UNCOMMON: Enable support for DS3231 Real-Time Clock (RTC)
+#define GET_TIME_THROUGH_NTP 0                  // 📡 Enables WIFI to get time via NTP
+#define HAS_RTC_DS3231                        // ⏰ UNCOMMON: Enable support for DS3231 Real-Time Clock (RTC)
 //#define SESSION_SIMULATION_BUTTONS_ENABLED 1  // 🕹️ Enable test buttons for session simulation
 //#define LCD_4x20_ENABLED 1                    // 🖨️ UNCOMMON: Enable 4x20 I2C LCD screen support
 
@@ -123,16 +123,23 @@
   unsigned long lastRtcRetrieveTime = 0;
   const unsigned long rtcRetrieveInterval = 10 * 60 * 1000; // 10 minutes in milliseconds
   void setSystemTime(time_t); // forward declaration
+  
+  void setSystemTimeFromRtc() {
+    Debug.printf("Pulling time from RTC");
+    DateTime now = rtc.now();
+    time_t unixTime = now.unixtime();
+    setSystemTime(unixTime);
+  }
   void periodicRtcDS3231TimeRetriever() {
     unsigned long currentMillis = millis();
     // Check if 10 minutes have elapsed
     if (rtcFound && (currentMillis - lastRtcRetrieveTime >= rtcRetrieveInterval)) {
         lastRtcRetrieveTime = currentMillis; // Update last run time
-        DateTime now = rtc.now();
-        time_t unixTime = now.unixtime();
-        setSystemTime(unixTime);
+        setSystemTimeFromRtc();
     }
   }
+
+
 #endif
 
 // EEPROM Configuration
@@ -306,7 +313,7 @@ void setSystemTime( time_t epochTime) {
       delay(100);
       sendNtpRequest();  // initial time request
     }
-  }
+  }                   
 
   void setupWifi() {
     char ssid[32], password[32];
@@ -1264,6 +1271,7 @@ void setup() {
     } else {
       rtcFound = true;
       Debug.println("RTC initialized.");
+      setSystemTimeFromRtc();
     }
   #endif
 
