@@ -182,6 +182,8 @@ private:
     // -----------------------------------------------------------------------
     void connectToFoundConsole() {
       foundConsole = false; consoleIsConnected = false; //mark them as fails, gets fixed if makes till end.
+      consoleWriteCharacteristic = nullptr;
+      consoleNotifyCharacteristic = nullptr;
       consoleClient = NimBLEDevice::createClient();
       consoleClient->setClientCallbacks(&mClientCallbacks);
 
@@ -219,6 +221,7 @@ private:
       if (!consoleWriteCharacteristic || !consoleWriteCharacteristic->canWrite()) {
         Debug.printf("FFF2 characteristic not found or not writable.\n");
         consoleClient->disconnect();
+        consoleWriteCharacteristic = nullptr;
         return;
       }
 
@@ -241,6 +244,7 @@ private:
         void onDisconnect(NimBLEClient* pclient, int reason) override {
             Debug.printf("!!! Console client disconnected.\n");
             mParent->consoleIsConnected = false;
+            mParent->consoleWriteCharacteristic = nullptr;
         }
       private:
         TreadmillDeviceLifespanOmniConsole* mParent;
@@ -264,6 +268,11 @@ private:
 
       if (canSend || forcedSend) {
         lastConsoleCommandSentAt = millis();
+
+        if (!consoleWriteCharacteristic) {
+          Debug.println("WARN: Tried to send opcode, but write characteristic is null.");
+          return;
+        }
 
         uint8_t opcode = consoleCommandOrder[consoleCommandIndex];
         uint8_t consoleCmdBuf[6] = { 0xA1, opcode, 0x00, 0x00, 0x00, 0x00 };
