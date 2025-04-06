@@ -55,6 +55,8 @@ class DebugWrapper {
     #endif
   }
 
+ // size_t printArray(uint8 * data)
+
   // Overload for println with no arguments.
   size_t println() {
     #ifdef ENABLE_DEBUG
@@ -110,4 +112,19 @@ class DebugWrapper {
         return 0;
     #endif
   }
+
+  void printArray(const uint8_t* data, size_t length, const char* label = nullptr) {
+    #ifdef ENABLE_DEBUG
+      if (label) {
+        Serial.printf("[%s] %s: ", getFormattedTimeWithMS().c_str(), label);
+      } else {
+        Serial.printf("[%s] ", getFormattedTimeWithMS().c_str());
+      }
+      for (size_t i = 0; i < length; i++) {
+        Serial.printf("%02X ", data[i]);
+      }
+      Serial.println();
+    #endif
+  }
+
 };
