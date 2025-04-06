@@ -32,9 +32,9 @@
  * Uncomment the mode that matches your treadmill setup.
  ******************************************************************************************/
 
-#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
+//#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
 //#define RETRO_MODE 1            // 🟢 Use Serial Port for Sessions (Requires special hardware)
-//#define FTMS_MODE 1               // Most Common - supports all treadmills which implemented FTMS
+#define FTMS_MODE 1               // Most Common - supports all treadmills which implemented FTMS
 
 /******************************************************************************************
  * ⚙️ GENERAL SETTINGS ⚙️
@@ -189,6 +189,8 @@ uint32_t gDistance = 0;
 bool gIsTreadmillActive = 0;
 float gSpeedFloat = 0;
 uint16_t gDurationInSecs = 0;
+
+volatile bool gResetRequested = 0;
 
 //int avgSpeedInt = 0;      // only omni console mode.
 //float avgSpeedFloat = 0;  // only omni console
@@ -781,6 +783,7 @@ void IRAM_ATTR handleBotButtonInterrupt() {
   if (currentTime - lastDebounceTimeBot > debounceDelay) {  // Check if enough time has passed
     botButtonPressed = true;
     lastDebounceTimeBot = currentTime;  // Update debounce timer
+    gResetRequested = true; // Likely temporary...
   }
 }
 

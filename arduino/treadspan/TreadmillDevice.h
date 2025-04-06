@@ -7,6 +7,8 @@ public:
     virtual void loopHandler() = 0;
     virtual bool isConnected() = 0;
 
+    virtual void sendReset() { }
+
     /**
      * Return true if it's a bluetooth low energy device.
      */

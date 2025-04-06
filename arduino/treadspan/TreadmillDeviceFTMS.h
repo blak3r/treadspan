@@ -23,6 +23,10 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
       // empty
     }
 
+    void sendReset() override {
+      sendResetCommand();
+    }
+
     virtual ~TreadmillDeviceFTMS() {}
 
     void setupHandler() override {
@@ -37,6 +41,18 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
         // The treadmill might never send a "stop" status.
         // We use a fallback detection based on speed < 0.2 mph for 5s:
         checkSpeedStopTimeout();
+
+        if( gResetRequested ) {
+          sendResetCommand();
+          gResetRequested = false;
+        }
+
+        // Check for delayed reset
+        if (mResetPending && (millis() - mResetStartTime >= 5000)) {
+          Debug.println("5 seconds elapsed since session end — sending reset command.");
+          sendResetCommand();
+          mResetPending = false;
+        }
       }
     }
 
@@ -75,6 +91,9 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
   // State
   bool mIsConnected;
   HasElapsed mConnectionRetryTimer;
+
+  bool mResetPending = false;
+  unsigned long mResetStartTime = 0;
 
   // Treadmill capabilities flags from the Feature characteristic
   struct FtmsFeatures {
@@ -150,6 +169,47 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
     scan->start(SCAN_DURATION_MS, false, true);
   }
 
+void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
+  Serial.println("Discovering services...");
+  const std::vector<NimBLERemoteService*>& services = pClient->getServices(true);
+
+  if (services.empty()) {
+    Serial.println("No services found.");
+    return;
+  }
+
+  for (size_t i = 0; i < services.size(); ++i) {
+    NimBLERemoteService* service = services[i];
+    Serial.print("Service: ");
+    Serial.println(service->getUUID().toString().c_str());
+
+    Serial.println("  Discovering characteristics...");
+    const std::vector<NimBLERemoteCharacteristic*>& characteristics = service->getCharacteristics(true);
+
+    if (characteristics.empty()) {
+      Serial.println("  No characteristics found.");
+    }
+
+    for (size_t j = 0; j < characteristics.size(); ++j) {
+      NimBLERemoteCharacteristic* characteristic = characteristics[j];
+      Serial.print("    Characteristic: ");
+      Serial.print(characteristic->getUUID().toString().c_str());
+      Serial.printf("  Handle: 0x%04X", characteristic->getHandle());
+
+      if (characteristic->canNotify()) {
+        Serial.println("  [NOTIFY]");
+      } else {
+        Serial.println();
+      }
+    }
+  }
+
+  Serial.println("Done listing notifiable characteristics.");
+}
+
+
+
+
   void connectToFoundTreadmill() {
     mFoundTreadmill = false;
     mIsConnected = false;
@@ -164,6 +224,10 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
       mClient->disconnect();
       return;
     }
+
+    #if VERBOSE_LOGGING
+      printCharacteristicAndHandleMap(mClient);
+    #endif
 
     Debug.println("Connected to FTMS. Discovering service...");
     NimBLERemoteService* service = mClient->getService(FTMS_SERVICE_UUID);
@@ -181,8 +245,10 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
     mTreadmillDataChar = service->getCharacteristic(FTMS_CHARACTERISTIC_TREADMILL);
     if (mTreadmillDataChar && mTreadmillDataChar->canNotify()) {
       sSelf = this; // so static callback can call into our member
+      //mTreadmillDataChar->canIndicate() i think sperax can't do indicate.
+      // Fun FAc
       mTreadmillDataChar->subscribe(true, onTreadmillDataNotify, mTreadmillDataChar->canIndicate());
-      Debug.println("Subscribed to Treadmill Data (0x2ACD).");
+      Debug.printf("Subscribed to Treadmill Data (0x2ACD). Supports Indicate?: %d\n", mTreadmillDataChar->canIndicate());
     } else {
       Debug.println("Treadmill Data (0x2ACD) not found or not notifiable.");
     }
@@ -576,21 +642,20 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
   }
 
   void sendResetCommand() {
-    Debug.println("Entered. RESET wrapper");
+    Debug.println("\n----------------------\n=-=-=-=-\nEntered. RESET wrapper\n=-=-=-=\n---------------------------------");
     // now attempt to reset treadmill
     if (mControlPointChar && mIsConnected) {
       // Typically you do "Request Control (0x00)" then "Reset (0x01)"
       std::vector<uint8_t> cmd;
 
-      // 0x00 = Request Control
-      cmd = { 0x00 };
-      mControlPointChar->writeValue(cmd);
+      uint16_t handle = mControlPointChar->getHandle();
+      Debug.printf("Control Point characteristic handle: 0x%04X\n", handle);
 
       // 0x01 = Reset
-      cmd = { 0x0801 };
+      cmd = { 0x08, 0x01 };
       mControlPointChar->writeValue(cmd);
 
-      Debug.println("Sent FTMS Request Control + Reset opcodes to treadmill.");
+      Debug.printf("Sent FTMS Request Control + Reset opcodes to treadmill via Handle (0x%04X)\n", handle);
     } else {
       Debug.println("Cannot reset treadmill - control point not available or not connected.");
     }
@@ -599,7 +664,9 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
   void sessionEndedDetectedWrapper() {
     Debug.printf("Entered. wrapper\n");
     sessionEndedDetected();
-    sendResetCommand();
+    mResetPending = true;
+    mResetStartTime = millis();  // start countdown
+   //sendResetCommand();
   }
 
   // -----------------------------------------------------------------------
@@ -610,7 +677,7 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
     uint8_t opcode = data[0];
 
     if (VERBOSE_LOGGING) {
-      Debug.printf("[2ADA] opcode=0x%02X\n", opcode);
+      Debug.printArray(data, length, "[2ADA] Treadmill Status Change: ");
     }
 
     // Some typical FTMS opcodes for treadmill start/stop:
@@ -618,9 +685,8 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
     // 0x04 = START or RESUME
     switch (opcode) {
       case 0x02:  // RESET - seems to be what Sperax is using...
-      case 0x03: // STOPPED/PAUSEA
-      case 0x05:
-        Debug.printf("Treadmill: STOPPED (FTMS status 0x%02X).", opcode);
+      case 0x03:  // STOPPED/PAUSEA
+        Debug.printf("Treadmill: STOPPED (FTMS status 0x%02X).\n", opcode);
         if (gIsTreadmillActive) {
           sessionEndedDetectedWrapper();
         }
@@ -632,6 +698,7 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
         }
         break;
       default:
+        Debug.printf("Treadmill FTMS Status Change (ignored): 0x%02X.\n", opcode);
         // The rest are events like speed changed, target changed, etc.
         break;
     }

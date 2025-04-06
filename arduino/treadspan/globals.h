@@ -25,6 +25,8 @@ extern TreadmillSession gCurrentSession;
 extern bool gIsTreadmillActive;
 extern DebugWrapper Debug;
 
+extern volatile bool gResetRequested; // Created as debug flag to force reset of FTMS treadmill with button press
+
 
 // ---------------------------------------------------------------------------
 // Global Functions
