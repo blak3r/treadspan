@@ -58,7 +58,7 @@
 
 #ifdef SESSION_SIMULATION_BUTTONS_ENABLED
   #define BUTTON_PIN 2  // 🔘 D2 - Press to simulate a treadmill session
-  #define CLEAR_PIN 3   // 🔘 D3 - Press to clear all sessions in EEPROM
+  #define CLEAR_PIN 0   // 🔘 D3 - Press to clear all sessions in EEPROM
 #endif
 
 /******************************************************************************************
@@ -95,6 +95,9 @@
 #if defined(GET_TIME_THROUGH_NTP)
   const bool getTimeThroughNtp = true;
 #else
+  #if defined(INCLUDE_IMPROV_SERIAL)
+    #error "You can't have INCLUDE_IMPROV_SERIAL enabled when GET_TIME_THROUGH_NTP is not (you're essentially configuring wifi that isn't enabled)"
+  #endif
   const bool getTimeThroughNtp = false;
 #endif
 
@@ -185,7 +188,8 @@ NimBLECharacteristic* timeWriteCharacteristic = nullptr;  // NEW
 // COMMON STATE VARIABLES (RETRO / OMNI)
 uint32_t gSteps = 0;
 uint16_t gCalories = 0;         
-uint32_t gDistance = 0;        
+uint32_t gDistance = 0;
+uint32_t gDistanceInMeters = 0;        
 bool gIsTreadmillActive = 0;
 float gSpeedFloat = 0;
 uint16_t gDurationInSecs = 0;

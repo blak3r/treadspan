@@ -230,6 +230,26 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     #endif
 
     Debug.println("Connected to FTMS. Discovering service...");
+
+    NimBLERemoteService* uRevoService = mClient->getService("FFF0");
+    if( uRevoService ) {
+      NimBLERemoteCharacteristic* uRevoChar = uRevoService->getCharacteristic("FFF1");
+      if( uRevoChar ) {
+        if (!uRevoChar->subscribe(true, onURevoDataNotify)) {
+          Debug.println("Subscribe failed.");
+          return;
+        } else {
+          Debug.println("Subbed to UREVO!");
+        }
+      } else {
+        Debug.println("Didn't find FFF1 characteristic (the urevo service");
+      }
+    } else {
+      Debug.println("Didn't find FFFO (the urevo service");
+    }
+
+
+
     NimBLERemoteService* service = mClient->getService(FTMS_SERVICE_UUID);
     if (!service) {
       Debug.println("Failed to find FTMS service. Disconnecting...");
@@ -252,6 +272,10 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     } else {
       Debug.println("Treadmill Data (0x2ACD) not found or not notifiable.");
     }
+
+
+
+
 
     // Get Fitness Machine Status (0x2ADA)
     mFtmsStatusChar = service->getCharacteristic(FTMS_CHARACTERISTIC_STATUS);
@@ -286,11 +310,6 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     }
 
     parseFtmsFeatures((const uint8_t*)val.data(), val.length());
-
-
-
-
-
   }
 
   // -----------------------------------------------------------------------
@@ -392,6 +411,14 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     }
   }
 
+  static void onURevoDataNotify(NimBLERemoteCharacteristic* pChar,
+                                    uint8_t* data, size_t length, bool isNotify) {
+    Debug.println("in urevo notify");
+    if (sSelf) {
+      Debug.printArray(data, length, "UREVO Proprietary Data");
+    }             
+  }
+
   static void onFtmsStatusNotify(NimBLERemoteCharacteristic* pChar,
                                 uint8_t* data, size_t length, bool isNotify) {
     if (sSelf) {
@@ -477,15 +504,27 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
         Debug.printf("Distance: %d meters, %.2f km\n", distanceRaw, (distanceRaw*.001f));
         offset += 3;
 
-        // FTMS doesn't provide steps directly, so we'll estimate based on distance
-        // (We'll also check for proprietary step data at the end)
-        if (distance > lastDistance) {
-            int distanceChange = distance - lastDistance;
-            int estimatedSteps = static_cast<int>(distanceChange / averageStepLengthMeters);
-            gSteps += estimatedSteps;
-            Debug.printf("Estimated steps from distance: +%d (total: %d)\n", estimatedSteps, gSteps);
+        // I did 211 Steps in 0.08 miles = 128.74meters 
+        // Meters * steps/meter
+        // 211 steps/128.74 = 1.6389622495
+
+
+        if( distanceRaw > 0 ) {
+          gSteps = distanceRaw * 1.7233f;
         }
-        lastDistance = distance;
+        gDistanceInMeters = distanceRaw;
+
+        Debug.printf("Distance: %d meters, %.2f km, %lu Steps\n", distanceRaw, (distanceRaw*.001f), gSteps);
+
+        // // FTMS doesn't provide steps directly, so we'll estimate based on distance
+        // // (We'll also check for proprietary step data at the end)
+        // if (distance > lastDistance) {
+        //     int distanceChange = distance - lastDistance;
+        //     int estimatedSteps = static_cast<int>(distanceChange / averageStepLengthMeters);
+        //     gSteps += estimatedSteps;
+        //     Debug.printf("Estimated steps from distance: +%d (total: %d)\n", estimatedSteps, gSteps);
+        // }
+        // lastDistance = distance;
     }
 
     // Inclination (bit 3)
@@ -583,62 +622,14 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
 
     // Check for proprietary steps data at the end
     // Many treadmills add steps as the last two bytes, even though it's not in the FTMS spec
-    bool stepsUpdatedFromDirectData = false;
-
-    if (offset + 2 <= (int)length) {
-        // There are at least 2 bytes remaining - these might be step count
-        uint16_t possibleSteps = data[offset] | (data[offset + 1] << 8);
-
-        // Only update if the value seems reasonable (not 0xFFFF or other unlikely values)
-        if (possibleSteps > 0 && possibleSteps < 100000) {
-            // If the steps value is cumulative session steps, update directly
-            if (possibleSteps > gSteps) {
-                Debug.printf("Steps from proprietary data: %d (previous: %d)\n", possibleSteps, gSteps);
-                gSteps = possibleSteps;
-                stepsUpdatedFromDirectData = true;
-            }
-            // If the value seems too small to be cumulative steps, it might be step increments
-            else if (possibleSteps < 100) {
-                gSteps += possibleSteps;
-                Debug.printf("Step increment from proprietary data: +%d (now: %d)\n", possibleSteps, gSteps);
-                stepsUpdatedFromDirectData = true;
-            }
+    // Log the remaining bytes for debugging
+    if (VERBOSE_LOGGING && offset < (int)length) {
+        Debug.printf("Extra data after standard fields: ");
+        for (int i = offset; i < (int)length; i++) {
+            Debug.printf_noTs("%02X ", data[i]);
         }
-
-        // Log the remaining bytes for debugging
-        if (VERBOSE_LOGGING && offset < (int)length) {
-            Debug.printf("Extra data after standard fields: ");
-            for (int i = offset; i < (int)length; i++) {
-                Debug.printf_noTs("%02X ", data[i]);
-            }
-            Debug.println();
-        }
-    }
-
-    // Only estimate steps from distance if we didn't get step data directly
-    // and we have valid distance data
-    if (!stepsUpdatedFromDirectData && (flags & 0x0004) && distance > lastDistance) {
-        int distanceChange = distance - lastDistance;
-        int estimatedSteps = static_cast<int>(distanceChange / averageStepLengthMeters);
-        gSteps += estimatedSteps;
-        Debug.printf("Estimated steps from distance (fallback): +%d (total: %d)\n",
-                    estimatedSteps, gSteps);
-    }
-
-    // Simple session detection based directly on speed crossing threshold
-    const float speedThreshold = 0.1f; // mph
-
-    if (oldSpeed < speedThreshold && gSpeedFloat > speedThreshold) {
-        // Treadmill has started moving
-        if (!gIsTreadmillActive) {
-            sessionStartedDetected();
-        }
-    } else if (oldSpeed > speedThreshold && gSpeedFloat < speedThreshold) {
-        // Treadmill has slowed to near-zero
-        if (gIsTreadmillActive) {
-            sessionEndedDetectedWrapper();
-        }
-    }
+        Debug.println();
+    } 
   }
 
   void sendResetCommand() {

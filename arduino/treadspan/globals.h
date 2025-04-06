@@ -17,6 +17,7 @@ extern float gSpeedInKm; // Represents the current speed of the treadmill as a f
 extern uint16_t gCalories;
 extern float gSpeedFloat;
 extern uint32_t gDistance;
+extern uint32_t gDistanceInMeters;
 extern uint16_t gDurationInSecs;
 
 extern bool wasTimeSet;
