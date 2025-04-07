@@ -40,7 +40,7 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
       } else {
         // The treadmill might never send a "stop" status.
         // We use a fallback detection based on speed < 0.2 mph for 5s:
-        checkSpeedStopTimeout();
+       // checkSpeedStopTimeout();
 
         if( gResetRequested ) {
           sendResetCommand();
@@ -413,10 +413,7 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
 
   static void onURevoDataNotify(NimBLERemoteCharacteristic* pChar,
                                     uint8_t* data, size_t length, bool isNotify) {
-    Debug.println("in urevo notify");
-    if (sSelf) {
-      Debug.printArray(data, length, "UREVO Proprietary Data");
-    }             
+    Debug.printArray(data, length, "UREVO Proprietary Data");            
   }
 
   static void onFtmsStatusNotify(NimBLERemoteCharacteristic* pChar,
