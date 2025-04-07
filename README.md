@@ -1,10 +1,16 @@
-# TreadSpan (an alternative to LifeSpan Fit)
+# TreadSpan (the app for Treadmill Desk User's) 
 
-Tracking your steps on a walking pad while working is challenging. With your hands fixed on the keyboard, 
-traditional step tracking—like relying on your watch—won’t work. Common workarounds include placing your phone in your 
-pocket or wearing your watch on your ankle. I didn't like either option as I frequently end up leaving my phone on 
-my desk after answering a message and putting my watch on my ankle means giving up your watch and feeling like a 
-convict on house arrest.
+With your hands stationary on a keyboard, watch based tracking methods don't work.  If your treadmill 
+manufacturer offers an app, it requires you to log each session individually. TreadSpan solves this problem
+and makes it easy to track all your steps taken from your Treadmill Desk. 
+
+People that work at Treadmill Desks have different needs than those who use a treadmill for running. TreadSpan is the answer.
+
+Everything about this solution is Open Source (mobile app, firmware, and hardware).  Together we can extend TreadSpan to 
+support more treadmills. 
+
+
+## My Story
 
 When I upgraded my Treadmill, I purchased the [TR1200](https://amzn.to/4bbn8ok) from LifeSpan Fitness, in part 
 because the manufacturer had created a mobile app which would allow you to log your steps and it would integrate with
@@ -23,8 +29,6 @@ steps.
 __Here's a short demo video__
 [![youtube-thumbnail.png](screenshots/youtube-thumbnail.png)](https://youtu.be/KdCkAAa3uqI)
 
-Everything about this solution is Open Source so the hope is other developers will contribute by writing custom firmware 
-for other treadmills over time and they can leverage the mobile app.  
 
 
 ## Instructions
@@ -107,7 +111,7 @@ The source code to the mobile app is available in the ios-app folder.
 2. Setup Arduino IDE for ESP32 support. See [this guide.](https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/)
 3. Open the treadspan.ino file in the arduino folder.
 4. You'll need to install these libraries:
-   * Nimble (v2.2.1)
+   * Nimble (v2.2.3)
    * TFT_eSPI (2.5.43) - After you install this library, you'll have to edit User_Setup.h and User_Setup_Select.h as shown in [this image](/screenshots/TFT_eSPI_Setup.png).
    * RTCLib.h (2.1.4) - Only needed if you're using an RTC chip
 5. Default Upload Speed of 921600 would not work for me.  I'd get a packet error.  Goto `Tools->Upload Speed` and select `460800`
