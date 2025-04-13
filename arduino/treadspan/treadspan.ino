@@ -5,6 +5,8 @@
  *   2025-03-01   0.9.6 - First release, BLE + TFT
  *   2025-03-15   1.0.7 - HW RTC Options, time setting via mobile app.
  *   2025-03-23   1.1.8 - FTMS Device / Autodetect
+ *.  2025-04-06.  1.1.9 - Working FTMS, worked with UREVO E1L
+ *   2025-04-08.  1.1.10- NimBLE updated to 2.2.3.
  * Author: Blake Robertson
  * License: MIT
  *****************************************************************************/
@@ -25,7 +27,7 @@
  *                                      CONFIGURATION
  ******************************************************************************************/
 
-#define FW_VERSION "v1.1.9"
+#define FW_VERSION "v1.1.10"
 
 /******************************************************************************************
  * 🏃 TREADMILL MODE SELECTION 🏃
@@ -35,6 +37,7 @@
 //#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
 //#define RETRO_MODE 1            // 🟢 Use Serial Port for Sessions (Requires special hardware)
 #define FTMS_MODE 1               // Most Common - supports all treadmills which implemented FTMS
+//#define UREVO_MODE 1
 
 /******************************************************************************************
  * ⚙️ GENERAL SETTINGS ⚙️
@@ -45,9 +48,9 @@
 #define VERBOSE_LOGGING 1                       // 🔍 Enable verbose BLE/Serial logging (set to 1 for more logs)
 #define HAS_TFT_DISPLAY 1                       // 🖥️ Enable TFT display (LilyGo hardware)
 #define LOAD_WIFI_CREDENTIALS_FROM_EEPROM 1     // 📡 Load WiFi credentials from EEPROM
-//#define INCLUDE_IMPROV_SERIAL 1                 // ⚡ Configure WiFi via Flash Installer (must be disabled when GET_TIME_THROUGH_NTP is undefined)
-//#define GET_TIME_THROUGH_NTP 0                  // 📡 Enables WIFI to get time via NTP
-#define HAS_RTC_DS3231                        // ⏰ UNCOMMON: Enable support for DS3231 Real-Time Clock (RTC)
+#define INCLUDE_IMPROV_SERIAL 1                 // ⚡ Configure WiFi via Flash Installer (must be disabled when GET_TIME_THROUGH_NTP is undefined)
+#define GET_TIME_THROUGH_NTP 1                  // 📡 Enables WIFI to get time via NTP
+//#define HAS_RTC_DS3231                        // ⏰ UNCOMMON: Enable support for DS3231 Real-Time Clock (RTC)
 //#define SESSION_SIMULATION_BUTTONS_ENABLED 1  // 🕹️ Enable test buttons for session simulation
 //#define LCD_4x20_ENABLED 1                    // 🖨️ UNCOMMON: Enable 4x20 I2C LCD screen support
 
@@ -121,6 +124,9 @@
 #elif defined(FTMS_MODE)
   #include "TreadmillDeviceFTMS.h"
   TreadmillDevice *treadmillDevice =  new TreadmillDeviceFTMS();
+#elif defined(UREVO_MODE)
+  #include "TreadmillDeviceUrevoProtocol.h"
+  TreadmillDevice *treadmillDevice =  new TreadmillDeviceUrevoProtocol();
 #else
   #error "You have not selected a TreadmillDevice Implementation."
 #endif

@@ -8,9 +8,9 @@
 
 // ... existing includes / code ...
 
-class TreadmillDeviceFTMS : public TreadmillDevice {
+class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
   public:
-    TreadmillDeviceFTMS()
+    TreadmillDeviceUrevoProtocol()
       : mConnectionRetryTimer(5000),
         mSpeedBelowThresholdStart(0),
         mIsConnected(false),
@@ -27,7 +27,7 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
       sendResetCommand();
     }
 
-    virtual ~TreadmillDeviceFTMS() {}
+    virtual ~TreadmillDeviceUrevoProtocol() {}
 
     void setupHandler() override {
       // no special hardware init
@@ -140,7 +140,7 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
   unsigned long mSpeedBelowThresholdStart; // 0 if currently above threshold
 
   // A global pointer so static callbacks can delegate to 'this'
-  static TreadmillDeviceFTMS* sSelf;
+  static TreadmillDeviceUrevoProtocol* sSelf;
 
   private:
   // -----------------------------------------------------------------------
@@ -217,19 +217,20 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     mClient = NimBLEDevice::createClient();
     mClient->setClientCallbacks(&mClientCallbacks);
 
-    Debug.printf("Attempting to connect to FTMS device at %s\n",
+    Debug.printf("Attempting to connect to UREVO device at %s\n",
                 mFtmsAddress.toString().c_str());
     if (!mClient->connect(mFtmsAddress)) {
-      Debug.println("Failed to connect to FTMS Treadmill.");
+      Debug.println("Failed to connect to UREVO Treadmill.");
       mClient->disconnect();
       return;
     }
+    Debug.println("Connected to UREVO. Discovering service...");
+
 
     #if VERBOSE_LOGGING
       printCharacteristicAndHandleMap(mClient);
     #endif
 
-    Debug.println("Connected to FTMS. Discovering service...");
 
     NimBLERemoteService* uRevoService = mClient->getService("FFF0");
     if( uRevoService ) {
@@ -240,120 +241,29 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
           return;
         } else {
           Debug.println("Subbed to UREVO!");
+          NimBLERemoteCharacteristic* uRevoWriteChar = uRevoService->getCharacteristic("FFF2");
+          if( uRevoWriteChar ) {
+            std::vector<uint8_t> cmd;
+            cmd = { 0x02, 0x51, 0x0B, 0x03 };
+            uRevoWriteChar->writeValue(cmd);
+            mIsConnected = true;
+            mFoundTreadmill = true;
+            return;
+          }
+          else {
+            Debug.println("didn't find urevo write.");
+            return;
+          }
+
         }
       } else {
         Debug.println("Didn't find FFF1 characteristic (the urevo service");
+        return;
       }
     } else {
       Debug.println("Didn't find FFFO (the urevo service");
-    }
-
-
-
-    NimBLERemoteService* service = mClient->getService(FTMS_SERVICE_UUID);
-    if (!service) {
-      Debug.println("Failed to find FTMS service. Disconnecting...");
-      mClient->disconnect();
       return;
     }
-
-    // Print out the treadmill's features if present
-    //readAndPrintFeature(service, FTMS_CHARACTERISTIC_FEATURE,    "Fitness Machine Feature");
-    readTreadmillFeatures(service, FTMS_CHARACTERISTIC_FEATURE, "Fitness Machine Feature");
-
-    // Get Treadmill Data (0x2ACD)
-    mTreadmillDataChar = service->getCharacteristic(FTMS_CHARACTERISTIC_TREADMILL);
-    if (mTreadmillDataChar && mTreadmillDataChar->canNotify()) {
-      sSelf = this; // so static callback can call into our member
-      //mTreadmillDataChar->canIndicate() i think sperax can't do indicate.
-      // Fun FAc
-      mTreadmillDataChar->subscribe(true, onTreadmillDataNotify, mTreadmillDataChar->canIndicate());
-      Debug.printf("Subscribed to Treadmill Data (0x2ACD). Supports Indicate?: %d\n", mTreadmillDataChar->canIndicate());
-    } else {
-      Debug.println("Treadmill Data (0x2ACD) not found or not notifiable.");
-    }
-
-
-
-
-
-    // Get Fitness Machine Status (0x2ADA)
-    mFtmsStatusChar = service->getCharacteristic(FTMS_CHARACTERISTIC_STATUS);
-    if (mFtmsStatusChar && mFtmsStatusChar->canNotify()) {
-      mFtmsStatusChar->subscribe(true, onFtmsStatusNotify);
-      Debug.println("Subscribed to Fitness Machine Status (0x2ADA).");
-    }
-
-    // ** Control Point (2AD9) - for sending reset command, etc. **
-    mControlPointChar = service->getCharacteristic(FTMS_CHARACTERISTIC_CONTROLPOINT);
-    if (mControlPointChar) {
-      Debug.println("Found FTMS Control Point (0x2AD9).");
-    } else {
-      Debug.println("No FTMS Control Point (0x2AD9) found on treadmill.");
-    }
-
-    mIsConnected = true;
-    mFoundTreadmill = true;
-  }
-
-  void readTreadmillFeatures(NimBLERemoteService* service, const char* uuid, const char* label) {
-    NimBLERemoteCharacteristic* ch = service->getCharacteristic(uuid);
-    if (!ch) {
-      // Not present on this device
-      Debug.printf("%s (UUID:%s) not found on treadmill.\n", label, uuid);
-      return;
-    }
-    std::string val = ch->readValue();
-    if (val.empty()) {
-      Debug.printf("%s: readValue() returned empty.\n", label);
-      return;
-    }
-
-    parseFtmsFeatures((const uint8_t*)val.data(), val.length());
-  }
-
-  // -----------------------------------------------------------------------
-  // Utility: Read a feature characteristic (like 0x2ACC or 0x2ACE) and print bits
-  // -----------------------------------------------------------------------
-  void readAndPrintFeature(NimBLERemoteService* service, const char* uuid, const char* label) {
-    NimBLERemoteCharacteristic* ch = service->getCharacteristic(uuid);
-    if (!ch) {
-      // Not present on this device
-      Debug.printf("%s (UUID:%s) not found on treadmill.\n", label, uuid);
-      return;
-    }
-    std::string val = ch->readValue();
-    if (val.empty()) {
-      Debug.printf("%s: readValue() returned empty.\n", label);
-      return;
-    }
-
-    Debug.printf("=== %s (UUID:%s) ===\n", label, uuid);
-
-    // Typically these are 4 bytes (32 bits) describing what features are supported
-    // The official FTMS spec breaks these bits down. We'll just do a hex dump here:
-    Debug.printf(" Raw Feature Value (hex): ");
-    for (size_t i = 0; i < val.size(); i++) {
-      Debug.printf("%02X ", (uint8_t)val[i]);
-    }
-    Debug.println("");
-
-    if (val.size() >= 4) {
-      // If you want to parse bits individually:
-      uint32_t rawFeature =
-        ((uint8_t)val[0]) |
-        (((uint8_t)val[1]) << 8) |
-        (((uint8_t)val[2]) << 16) |
-        (((uint8_t)val[3]) << 24);
-
-      Debug.printf("  -> As 32-bit mask: 0x%08X\n", rawFeature);
-      // Official FTMS spec details which bits correspond to features like:
-      //   bit 0: Average Speed Supported
-      //   bit 1: Inst. Pace Supported
-      //   ...
-      //   etc.
-    }
-    Debug.println("============================\n");
   }
 
   // -----------------------------------------------------------------------
@@ -361,7 +271,7 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
   // -----------------------------------------------------------------------
   class InternalScanCallbacks : public NimBLEScanCallbacks {
     public:
-      InternalScanCallbacks(TreadmillDeviceFTMS* parent) : mParent(parent) {}
+      InternalScanCallbacks(TreadmillDeviceUrevoProtocol* parent) : mParent(parent) {}
       void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
         if (VERBOSE_LOGGING) {
           Debug.printf("Advertised Device: %s\n", advertisedDevice->toString().c_str());
@@ -380,7 +290,7 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
         Debug.printf("BLE Scan ended, reason=%d, found %d devices.\n", reason, results.getCount());
       }
     private:
-      TreadmillDeviceFTMS* mParent;
+      TreadmillDeviceUrevoProtocol* mParent;
   } mScanCallbacks{this};
 
   // -----------------------------------------------------------------------
@@ -388,7 +298,7 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
   // -----------------------------------------------------------------------
   class InternalClientCallbacks : public NimBLEClientCallbacks {
     public:
-      InternalClientCallbacks(TreadmillDeviceFTMS* parent) : mParent(parent) {}
+      InternalClientCallbacks(TreadmillDeviceUrevoProtocol* parent) : mParent(parent) {}
       void onConnect(NimBLEClient* pclient) override {
         Debug.println("FTMS treadmill connected (callback).");
         mParent->mIsConnected = true;
@@ -398,30 +308,17 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
         mParent->mIsConnected = false;
       }
     private:
-      TreadmillDeviceFTMS* mParent;
+      TreadmillDeviceUrevoProtocol* mParent;
   } mClientCallbacks{this};
 
   // -----------------------------------------------------------------------
   // Notification callbacks
   // -----------------------------------------------------------------------
-  static void onTreadmillDataNotify(NimBLERemoteCharacteristic* pChar,
-                                    uint8_t* data, size_t length, bool isNotify) {
-    if (sSelf) {
-      sSelf->handleTreadmillData(data, length);
-    }
-  }
-
   static void onURevoDataNotify(NimBLERemoteCharacteristic* pChar,
                                     uint8_t* data, size_t length, bool isNotify) {
     Debug.printArray(data, length, "UREVO Proprietary Data");            
   }
 
-  static void onFtmsStatusNotify(NimBLERemoteCharacteristic* pChar,
-                                uint8_t* data, size_t length, bool isNotify) {
-    if (sSelf) {
-      sSelf->handleFtmsStatus(data, length);
-    }
-  }
 
   // -----------------------------------------------------------------------
   // Treadmill Data (0x2ACD) parser
@@ -508,8 +405,6 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
 
         if( distanceRaw > 0 ) {
           gSteps = distanceRaw * 1.7233f;
-        } else {
-          gSteps = 0;
         }
         gDistanceInMeters = distanceRaw;
 
@@ -801,4 +696,4 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
 };
 
 // Initialize static pointer
-TreadmillDeviceFTMS* TreadmillDeviceFTMS::sSelf = nullptr;
+TreadmillDeviceUrevoProtocol* TreadmillDeviceUrevoProtocol::sSelf = nullptr;
