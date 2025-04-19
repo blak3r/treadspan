@@ -213,6 +213,11 @@ TreadmillSession gCurrentSession;
 
 
 //------------------- COMMON TIME SETTING --------------------//
+String getFormattedTimeYMD();
+String getFormattedTimeHMS();
+String getFormattedDate();
+void tftWifiConnectingScreen(const char*);
+
 /**
  * This is called by NTP Update and by
  * the Mobile App during syncs via the BLE Time Write Characteristic
@@ -317,6 +322,8 @@ void setSystemTime( time_t epochTime) {
       reconnectWifiTimer.reset(); // reset it back to 30 so we don't immediately retry after losing connection.
     }
   }
+
+  void sendNtpRequest(); // forward declaration
 
   // This callback is called when WiFi connects and gets an IP
   void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -772,6 +779,10 @@ void periodicLcdUpdateMainLoopHandler() {
 
 #include "icons.h"
 #include "AGENCYB22pt7b.h"
+
+void tftUpdateDisplay();
+void tftWifiConnectingScreen(const char*);
+
 
 volatile bool topButtonPressed = false;
 volatile uint8_t tftPage = 0;
