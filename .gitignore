@@ -47,5 +47,13 @@ Package.resolved
 /screenshots/new-icon-1024.png
 /arduino/log-to-file.sh
 /arduino/treadspan/archive/*
+/arduino/src/archive/*
 /arduino/logs/*
 /arduino/*.sh
+
+
+/arduino/.pio
+/arduino/.vscode/.browse.c_cpp.db*
+/arduino/.vscode/c_cpp_properties.json
+/arduino/.vscode/launch.json
+/arduino/.vscode/ipch
