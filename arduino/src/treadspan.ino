@@ -7,6 +7,7 @@
  *   2025-03-23   1.1.8 - FTMS Device / Autodetect
  *.  2025-04-06.  1.1.9 - Working FTMS, worked with UREVO E1L
  *   2025-04-08.  1.1.10- NimBLE updated to 2.2.3.
+ *   2025-04-19   1.2.11- Platformio layout / UREVO Protocol.
  * Author: Blake Robertson
  * License: MIT
  *****************************************************************************/
@@ -27,7 +28,7 @@
  *                                      CONFIGURATION
  ******************************************************************************************/
 
-#define FW_VERSION "v1.1.10"
+#define FW_VERSION "v1.2.11"
 
 /******************************************************************************************
  * 🏃 TREADMILL MODE SELECTION 🏃
@@ -36,8 +37,8 @@
 
 //#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
 //#define RETRO_MODE 1            // 🟢 Use Serial Port for Sessions (Requires special hardware)
-#define FTMS_MODE 1               // Most Common - supports all treadmills which implemented FTMS
-//#define UREVO_MODE 1
+//#define FTMS_MODE 1             // Most Common - supports all treadmills which implemented FTMS
+#define UREVO_MODE 1            // UREVO's proprietary service that provides step count, uses FTMS control characteristic in tandem.
 
 /******************************************************************************************
  * ⚙️ GENERAL SETTINGS ⚙️
@@ -804,7 +805,7 @@ void IRAM_ATTR handleBotButtonInterrupt() {
   if (currentTime - lastDebounceTimeBot > debounceDelay) {  // Check if enough time has passed
     botButtonPressed = true;
     lastDebounceTimeBot = currentTime;  // Update debounce timer
-    gResetRequested = true; // Likely temporary...
+    //gResetRequested = true; // Likely temporary...
   }
 }
 

@@ -9,6 +9,8 @@ People that work at Treadmill Desks have different needs than those who use a tr
 Everything about this solution is Open Source (mobile app, firmware, and hardware).  Together we can extend TreadSpan to 
 support more treadmills. 
 
+## Demo Video
+[![youtube-thumbnail.png](screenshots/youtube-thumbnail.png)](https://youtu.be/KdCkAAa3uqI)
 
 ## My Story
 
@@ -18,17 +20,13 @@ Apple HealthKit.
 It sounded like the perfect solution. But, unfortunately the implementation of their mobile app was poor to say the least.
 The biggest issue, was you had to open their clunky app to sync every session individually. 
 Anytime, I went to the bathroom, answered the door, or grabbed a snack, I'd have to open the app, stop my train of 
-thought on what i was doing, and log the steps.  I was baffled, how could my \$1000+ treadmill have a worse experience 
-than my \$50 bathroom scale.  My bathroom scale logs my weight each time I step on it and stores each entry to it's 
-internal memory. It patiently waits for me to open the mobile app and logs all the entries to HealthKit in one go.
+thought on what i was doing, and log the steps.  I was sorta baffled. My bathroom scale logs my weight each time I step 
+on it and stores each entry to it's internal memory. It patiently waits for me to open the mobile app and then it logs
+all the unsynced entries to HealthKit in one go.
 
 That's what this project aimed todo.  Make my walking pad as convenient as my bathroom scale. 
 And with about $20 and 10 minutes of time, you can set this up too and free your mind from the chore of logging your
 steps.
-
-__Here's a short demo video__
-[![youtube-thumbnail.png](screenshots/youtube-thumbnail.png)](https://youtu.be/KdCkAAa3uqI)
-
 
 
 ## Instructions
@@ -84,12 +82,12 @@ be helpful if you don't have wifi configured properly... or want to know how man
 
 ## How it Works
 
-A bunch of Bluetooth Low Energy protocols.
+A bunch of Bluetooth Low Energy (BLE) protocols.
 
-LS OMNI Console --(BLE)--> "The ESP32 Chip" --(BLE)--> TreadSpan Mobile App
+Treadmill --(BLE)--> "The ESP32 Chip" --(BLE)--> TreadSpan Mobile App
 
-First, the ESP32 Chip mimics the official LifeSpan Fit app to pull the status of the treadmill / how many steps from 
-the omni console in realtime.  It detects when sessions starts and stops and saves each session to it's internal memory 
+First, the ESP32 Chip mimics the official Manufacturers App (LifeSpan Fit, UREVO, Sperax, etc) to pull the status 
+of the treadmill / how many steps from in realtime.  It detects when sessions starts and stops and saves each session to it's internal memory 
 with timestamps. The ESP32 also is running as a BLE Peripheral device that advertises itself to the Mobile App.
 
 Second, the TreadSpan mobile app searches for TreadSpan hardware and will pull any sessions from it.  It then logs those
@@ -105,7 +103,11 @@ the mobile app without modification.
 
 The source code to the mobile app is available in the ios-app folder.
 
-### Setup Arduino Development Environment.
+### ESP32 Firmware (Setup Arduino Development Environment).
+
+NOTE: the project is currently able to work with both Arduino IDE and platformio.
+If you don't have a hard preference, i'd recommend platformio as I'm moving in that direction and 
+I believe it's actually faster to setup .
 
 1. Install Arduino IDE.
 2. Setup Arduino IDE for ESP32 support. See [this guide.](https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/)
@@ -134,7 +136,7 @@ Your `loopHandler()` method should not block the main loop, use callback methods
 
 The full source for the mobile app is provided in the `ios-app` folder. You'll need to have a Mac, install XCode, do things like create a developer certificate, and put your iphone into developer mode.  There are plenty of guides on this out there.
 
-### Protocol Analysis
+## Protocol Analysis
 If you're interested in learning more about the reverse engineering of protocol attempts. Then, look in the [Protocol Analysis](/protocol-analysis/README.md) folder.
 Here I include raw captures of the traffic over both the serial port and BLE as well as my notes from reversing the protocols.
 
@@ -153,9 +155,10 @@ Here I include raw captures of the traffic over both the serial port and BLE as 
 No, I'm hoping that someone in the community that has an Android phone will step up and assist. 
 I'm fairly confident if you have any development skills and can use
 an AI Tool like ChatGPT it wouldn't be difficult to port.  You would providing the SyncView.swift file and telling it to implement the 
-BLE protocol.  
+BLE protocol. (The Metrics View is what took the vast majority of time to develop through trial and error and it's not core functionality).
 
-### I have the Retro Console, Can I use this solution?
+
+### I have the LifeSpan Retro Console, Can I use this solution?
 In theory, yes.  It is possible to get the steps through the serial port. I have implemented it and used it for some time.  
 The downside of this approach is you need more complicated hardware and if you're not careful, there is a possibility that you could damage your treadmill if you 
 don't connect things correctly.
@@ -195,7 +198,7 @@ HIGH
 - NTP... go to the config_time method?
 - Mobile App - Display total steps 
 - FTMS - need a means of converting distance --> steps.
-- 
+- Can I reduce backlight?
 
 MED
 - ~~WIFI Reconnect code on Arduino.~~
