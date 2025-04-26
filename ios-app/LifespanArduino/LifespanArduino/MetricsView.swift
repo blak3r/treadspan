@@ -53,8 +53,16 @@ struct MetricsView: View {
             }
         }
         .onAppear {
+            resetMetricsState()
             requestHealthKitPermission()
         }
+    }
+    
+    // MARK: - Reset State
+    private func resetMetricsState() {
+      currentDate = Date()
+      hasNavigatedMonth = false
+      selectedBar = nil
     }
 
     // MARK: - Permission View
@@ -63,6 +71,7 @@ struct MetricsView: View {
             Text("Permission Required")
                 .font(.headline)
             Button("Grant Permission") {
+                resetMetricsState()
                 requestHealthKitPermission()
             }
             .buttonStyle(.borderedProminent)

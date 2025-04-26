@@ -231,25 +231,6 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
 
     Debug.println("Connected to FTMS. Discovering service...");
 
-    NimBLERemoteService* uRevoService = mClient->getService("FFF0");
-    if( uRevoService ) {
-      NimBLERemoteCharacteristic* uRevoChar = uRevoService->getCharacteristic("FFF1");
-      if( uRevoChar ) {
-        if (!uRevoChar->subscribe(true, onURevoDataNotify)) {
-          Debug.println("Subscribe failed.");
-          return;
-        } else {
-          Debug.println("Subbed to UREVO!");
-        }
-      } else {
-        Debug.println("Didn't find FFF1 characteristic (the urevo service");
-      }
-    } else {
-      Debug.println("Didn't find FFFO (the urevo service");
-    }
-
-
-
     NimBLERemoteService* service = mClient->getService(FTMS_SERVICE_UUID);
     if (!service) {
       Debug.println("Failed to find FTMS service. Disconnecting...");
@@ -272,10 +253,6 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     } else {
       Debug.println("Treadmill Data (0x2ACD) not found or not notifiable.");
     }
-
-
-
-
 
     // Get Fitness Machine Status (0x2ADA)
     mFtmsStatusChar = service->getCharacteristic(FTMS_CHARACTERISTIC_STATUS);
@@ -363,9 +340,9 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     public:
       InternalScanCallbacks(TreadmillDeviceFTMS* parent) : mParent(parent) {}
       void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
-        if (VERBOSE_LOGGING) {
+        #ifdef VERBOSE_LOGGING
           Debug.printf("Advertised Device: %s\n", advertisedDevice->toString().c_str());
-        }
+        #endif
 
         if (advertisedDevice->isAdvertisingService(NimBLEUUID(uint16_t(0x1826)))) {
           Debug.printf("Found FTMS device: %s\n",
@@ -411,11 +388,6 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     }
   }
 
-  static void onURevoDataNotify(NimBLERemoteCharacteristic* pChar,
-                                    uint8_t* data, size_t length, bool isNotify) {
-    Debug.printArray(data, length, "UREVO Proprietary Data");            
-  }
-
   static void onFtmsStatusNotify(NimBLERemoteCharacteristic* pChar,
                                 uint8_t* data, size_t length, bool isNotify) {
     if (sSelf) {
@@ -453,13 +425,13 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
 
     if (length < 2) return;
 
-    if (VERBOSE_LOGGING) {
+      #ifdef VERBOSE_LOGGING 
         Debug.printf("FTMS Data (len=%d): ", length);
         for (size_t i = 0; i < length; i++) {
             Debug.printf_noTs("%02X ", data[i]);
         }
         Debug.printf_noTs("\n");
-    }
+      #endif
 
     // The first two bytes are flags indicating which data fields are present
     uint16_t flags = data[0] | (data[1] << 8);
@@ -622,7 +594,7 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     // Check for proprietary steps data at the end
     // Many treadmills add steps as the last two bytes, even though it's not in the FTMS spec
     // Log the remaining bytes for debugging
-    if (VERBOSE_LOGGING && offset < (int)length) {
+    if (offset < (int)length) {
         Debug.printf("Extra data after standard fields: ");
         for (int i = offset; i < (int)length; i++) {
             Debug.printf_noTs("%02X ", data[i]);
@@ -666,9 +638,9 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
     if (length < 1) return;
     uint8_t opcode = data[0];
 
-    if (VERBOSE_LOGGING) {
+    #ifdef VERBOSE_LOGGING
       Debug.printArray(data, length, "[2ADA] Treadmill Status Change: ");
-    }
+    #endif
 
     // Some typical FTMS opcodes for treadmill start/stop:
     // 0x03 = STOP or PAUSED by safety key

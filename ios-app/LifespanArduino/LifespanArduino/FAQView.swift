@@ -49,7 +49,7 @@ struct FAQView: View {
         FAQItem(
             question: "Which model treadmills are supported?",
             answer: AnyView(
-                Text("Currently, the solution has been tested with the [LifeSpan Treadmills such as TR1200](https://amzn.to/4bbn8ok). It should work with any LifeSpan treadmill that works with the Omni Console. If you have the RETRO console, there is also a solution, but the hardware requires some assembly and is probably out of reach if you're not a tinkerer.")
+                Text("Most treadmills that have an app will work.  The solution was developed and tested with the [LifeSpan Treadmills such as TR1200](https://amzn.to/4bbn8ok). It should work with any LifeSpan treadmill that works with the Omni Console. If you have the RETRO console, there is also a solution, but the hardware requires some assembly and is probably out of reach if you're not a tinkerer.")
             )
         )
     ]

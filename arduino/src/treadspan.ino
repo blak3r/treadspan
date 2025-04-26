@@ -7,6 +7,7 @@
  *   2025-03-23   1.1.8 - FTMS Device / Autodetect
  *.  2025-04-06.  1.1.9 - Working FTMS, worked with UREVO E1L
  *   2025-04-08.  1.1.10- NimBLE updated to 2.2.3.
+ *   2025-04-19   1.2.11- Platformio layout / UREVO Protocol.
  * Author: Blake Robertson
  * License: MIT
  *****************************************************************************/
@@ -27,7 +28,7 @@
  *                                      CONFIGURATION
  ******************************************************************************************/
 
-#define FW_VERSION "v1.1.10"
+#define FW_VERSION "v1.2.11"
 
 /******************************************************************************************
  * 🏃 TREADMILL MODE SELECTION 🏃
@@ -36,8 +37,8 @@
 
 //#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
 //#define RETRO_MODE 1            // 🟢 Use Serial Port for Sessions (Requires special hardware)
-#define FTMS_MODE 1               // Most Common - supports all treadmills which implemented FTMS
-//#define UREVO_MODE 1
+//#define FTMS_MODE 1             // Most Common - supports all treadmills which implemented FTMS
+#define UREVO_MODE 1            // UREVO's proprietary service that provides step count, uses FTMS control characteristic in tandem.
 
 /******************************************************************************************
  * ⚙️ GENERAL SETTINGS ⚙️
@@ -213,6 +214,11 @@ TreadmillSession gCurrentSession;
 
 
 //------------------- COMMON TIME SETTING --------------------//
+String getFormattedTimeYMD();
+String getFormattedTimeHMS();
+String getFormattedDate();
+void tftWifiConnectingScreen(const char*);
+
 /**
  * This is called by NTP Update and by
  * the Mobile App during syncs via the BLE Time Write Characteristic
@@ -317,6 +323,8 @@ void setSystemTime( time_t epochTime) {
       reconnectWifiTimer.reset(); // reset it back to 30 so we don't immediately retry after losing connection.
     }
   }
+
+  void sendNtpRequest(); // forward declaration
 
   // This callback is called when WiFi connects and gets an IP
   void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -773,6 +781,10 @@ void periodicLcdUpdateMainLoopHandler() {
 #include "icons.h"
 #include "AGENCYB22pt7b.h"
 
+void tftUpdateDisplay();
+void tftWifiConnectingScreen(const char*);
+
+
 volatile bool topButtonPressed = false;
 volatile uint8_t tftPage = 0;
 volatile unsigned long lastDebounceTimeTop = 0;  // Track last button press time
@@ -793,7 +805,7 @@ void IRAM_ATTR handleBotButtonInterrupt() {
   if (currentTime - lastDebounceTimeBot > debounceDelay) {  // Check if enough time has passed
     botButtonPressed = true;
     lastDebounceTimeBot = currentTime;  // Update debounce timer
-    gResetRequested = true; // Likely temporary...
+    //gResetRequested = true; // Likely temporary...
   }
 }
 

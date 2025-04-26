@@ -16,11 +16,11 @@ struct SyncView: View {
                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                     .shadow(radius: 5)
 
-               Text("TreadSpan")
-                   .font(.system(.largeTitle, design: .default))
-                   .fontWeight(.heavy)
-                   .tracking(3)
-                   .textCase(.uppercase)
+                Text("TreadSpan")
+                    .font(.system(.largeTitle, design: .default))
+                    .fontWeight(.heavy)
+                    .tracking(3)
+                    .textCase(.uppercase)
 
                 // Fetch/Save Sessions Button with busy indicator
                 Button(action: {
@@ -66,12 +66,20 @@ struct SyncView: View {
                 }
 
                 Spacer()
+                
+                // Today's total steps
+                (Text("Today, so far, you've taken ") +
+                 Text("\(Int(viewModel.todayTotalSteps))").bold() +
+                 Text(" steps!"))
+                  .font(.footnote)
+                  .padding(.bottom, 20)
             }
             .padding()
             .toast(message: $viewModel.healthKitSyncStatusMessage)
             .onAppear {
                 // Automatically scan/fetch from the treadmill when this view appears
                 viewModel.fetchAndSaveSessions()
+                viewModel.fetchTodayTotalSteps()
             }
         }
     }
@@ -212,6 +220,7 @@ class BLEViewModel: NSObject, ObservableObject {
     @Published var isFetching: Bool = false
     @Published var healthKitSyncStatusMessage: String = ""
     @Published var healthKitSyncCompleted: Bool = false
+    @Published var todayTotalSteps: Double = 0
 
     private var didReceiveStopMarker: Bool = false
     private var centralManager: CBCentralManager!
@@ -226,8 +235,8 @@ class BLEViewModel: NSObject, ObservableObject {
     private let confirmCharUUID = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF2")
 
     // NEW TIME CHARACTERSITICS
-    private let timeReadCharUUID  = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF3") // NEW
-    private let timeWriteCharUUID = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF4") // NEW
+    private let timeReadCharUUID  = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF3")
+    private let timeWriteCharUUID = CBUUID(string: "0000A51A-12BB-C111-1337-00099AACDEF4")
     private var timeReadCharacteristic: CBCharacteristic?
     private var timeWriteCharacteristic: CBCharacteristic?
 
@@ -237,6 +246,8 @@ class BLEViewModel: NSObject, ObservableObject {
     // HealthKit
     private let healthStore = HKHealthStore()
     private let stepType = HKObjectType.quantityType(forIdentifier: .stepCount)!
+    // 1) Add walkingStepLength as a HKQuantityType
+    private let walkingStepLengthType = HKObjectType.quantityType(forIdentifier: .walkingStepLength)!
 
     private var didDiscoverDevice = false
 
@@ -331,8 +342,9 @@ class BLEViewModel: NSObject, ObservableObject {
             return
         }
 
-        let writeTypes: Set<HKSampleType> = [stepType]
-        let readTypes: Set<HKObjectType> = [stepType]
+        // 2) Include stride-length in read types
+        let writeTypes: Set<HKSampleType> = [stepType] // We'll only write steps
+        let readTypes: Set<HKObjectType> = [stepType, walkingStepLengthType]
 
         if #available(iOS 12.0, *) {
             healthStore.getRequestStatusForAuthorization(toShare: writeTypes, read: readTypes) { [weak self] status, error in
@@ -431,7 +443,57 @@ class BLEViewModel: NSObject, ObservableObject {
             } else {
                 self.healthKitSyncStatusMessage = "Some sessions failed to sync."
             }
+            // 3) Once sessions are saved, fetch stride-length data:
+            //self.fetchAndPrintStrideLengths()
+            self.fetchTodayTotalSteps()
         }
+    }
+    
+     // Fetch today's total steps (non-blocking)
+     func fetchTodayTotalSteps() {
+       let calendar = Calendar.current
+       let start = calendar.startOfDay(for: Date())
+       let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+
+       let query = HKStatisticsQuery(quantityType: stepType,
+                                      quantitySamplePredicate: predicate,
+                                      options: .cumulativeSum) { _, result, _ in
+         guard let sum = result?.sumQuantity() else { return }
+         DispatchQueue.main.async {
+           self.todayTotalSteps = sum.doubleValue(for: .count())
+         }
+       }
+       healthStore.execute(query)
+     }
+
+    // 4) Fetch stride-length samples (last 7 days) and print to console
+    private func fetchAndPrintStrideLengths() {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let startDate = calendar.date(byAdding: .day, value: -7, to: now) else {
+            return
+        }
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now, options: .strictStartDate)
+
+        let query = HKSampleQuery(sampleType: walkingStepLengthType,
+                                  predicate: predicate,
+                                  limit: HKObjectQueryNoLimit,
+                                  sortDescriptors: nil) { _, samples, error in
+            if let error = error {
+                print("Error fetching stride length samples: \(error.localizedDescription)")
+                return
+            }
+            guard let quantitySamples = samples as? [HKQuantitySample], !quantitySamples.isEmpty else {
+                print("No stride length samples in the last 7 days.")
+                return
+            }
+
+            for sample in quantitySamples {
+                let strideValue = sample.quantity.doubleValue(for: HKUnit.meter())
+                print("Stride length: \(strideValue) m from \(sample.startDate) to \(sample.endDate)")
+            }
+        }
+        healthStore.execute(query)
     }
 }
 
@@ -516,7 +578,9 @@ extension BLEViewModel: CBPeripheralDelegate {
 
         for service in services where service.uuid == serviceUUID {
             print("Found TreadSpan service, discovering characteristics...")
-            peripheral.discoverCharacteristics([dataCharUUID, confirmCharUUID, timeReadCharUUID, timeWriteCharUUID], for: service)
+            peripheral.discoverCharacteristics([dataCharUUID, confirmCharUUID,
+                                               timeReadCharUUID, timeWriteCharUUID],
+                                              for: service)
         }
     }
 
@@ -533,11 +597,6 @@ extension BLEViewModel: CBPeripheralDelegate {
         for characteristic in characteristics {
             if characteristic.uuid == dataCharUUID {
                 dataCharacteristic = characteristic
-                // COMMENT OUT subscription so we won't receive the 0xFF done marker until after time read:
-                // peripheral.setNotifyValue(true, for: characteristic)
-                // statusMessage = "Fetching sessions..."
-                // print("Data characteristic found. Enabling notifications/indications.")
-
             } else if characteristic.uuid == confirmCharUUID {
                 confirmCharacteristic = characteristic
                 print("Confirmation characteristic found.")
@@ -597,7 +656,7 @@ extension BLEViewModel: CBPeripheralDelegate {
                 print("Wrote current time to device.")
             }
 
-            // NOW that we have read device time, let's subscribe to the data characteristic:
+            // Now subscribe to the data characteristic after reading the time
             if let dataChar = dataCharacteristic {
                 peripheral.setNotifyValue(true, for: dataChar)
                 statusMessage = "Fetching sessions..."
