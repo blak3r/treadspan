@@ -51,14 +51,14 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
        // checkSpeedStopTimeout();
 
         if( gResetRequested ) {
-          Debug.println("Sending a reset cause gResetRequested");
+          Debug.println("UREVO Sending a reset cause gResetRequested");
           sendResetCommand();
           gResetRequested = false;
         }
 
         // Check for delayed reset
         if (mResetPending && (millis() - mResetStartTime >= 5000)) {
-          Debug.println("5 seconds elapsed since session end — sending reset command.");
+          Debug.println("UREVO 5 seconds elapsed since session end — sending reset command.");
           sendResetCommand();
           mResetPending = false;
         }
@@ -96,6 +96,8 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
   NimBLERemoteCharacteristic* mTreadmillDataChar;
   NimBLERemoteCharacteristic* mFtmsStatusChar;
   NimBLERemoteCharacteristic* mControlPointChar;  // << Added
+  
+  NimBLERemoteCharacteristic* mRevoWriteChar;
 
   // State
   bool mIsConnected;
@@ -197,6 +199,9 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
 
     #if VERBOSE_LOGGING
       printCharacteristicAndHandleMap(mClient);
+
+      DeviceInfo di = readDeviceInfoFrom180A(mClient);
+      di.print();
     #endif
 
     NimBLERemoteService* service = mClient->getService(FTMS_SERVICE_UUID);
@@ -214,26 +219,10 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
       Debug.println("No FTMS Control Point (0x2AD9) found on treadmill.");
     }
 
-        // // Get Treadmill Data (0x2ACD)
-        // mTreadmillDataChar = service->getCharacteristic(FTMS_CHARACTERISTIC_TREADMILL);
-        // if (mTreadmillDataChar && mTreadmillDataChar->canNotify()) {
-        //   sSelf = this; // so static callback can call into our member
-        //   //mTreadmillDataChar->canIndicate() i think sperax can't do indicate.
-        //   // Fun FAc
-        //   mTreadmillDataChar->subscribe(true, onTreadmillDataNotify, mTreadmillDataChar->canIndicate());
-        //   Debug.printf("Subscribed to Treadmill Data (0x2ACD). Supports Indicate?: %d\n", mTreadmillDataChar->canIndicate());
-        // } else {
-        //   Debug.println("Treadmill Data (0x2ACD) not found or not notifiable.");
-        // }
-    
-        // Get Fitness Machine Status (0x2ADA)
-        // mFtmsStatusChar = service->getCharacteristic(FTMS_CHARACTERISTIC_STATUS);
-        // if (mFtmsStatusChar && mFtmsStatusChar->canNotify()) {
-        //   mFtmsStatusChar->subscribe(true, onFtmsStatusNotify);
-        //   Debug.println("Subscribed to Fitness Machine Status (0x2ADA).");
-        // }
-    
+    subscribeToUrevo();
+  }
 
+  void subscribeToUrevo() {
     NimBLERemoteService* uRevoService = mClient->getService("FFF0");
     if( uRevoService ) {
       NimBLERemoteCharacteristic* uRevoChar = uRevoService->getCharacteristic("FFF1");
@@ -244,12 +233,10 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
         } else {
           sSelf = this; // so static callback can call into our member
           Debug.println("Subbed to UREVO!");
-          NimBLERemoteCharacteristic* uRevoWriteChar = uRevoService->getCharacteristic("FFF2");
-          if( uRevoWriteChar ) {
-            std::vector<uint8_t> cmd;
-            cmd = { 0x02, 0x51, 0x0B, 0x03 };
-            const bool writeStatus = uRevoWriteChar->writeValue(cmd, true);
-            Debug.printf("Wrote thing to start stuff... %d\n", writeStatus);
+          // TODO if this is called more than once.
+          mRevoWriteChar = uRevoService->getCharacteristic("FFF2");
+          if( mRevoWriteChar ) {
+            writeStartCommand();
             mIsConnected = true;
             mFoundTreadmill = true;
             return;
@@ -267,6 +254,21 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
     } else {
       Debug.println("Didn't find FFFO (the urevo service");
       return;
+    }
+  }
+
+  /**
+   * write this payload causes data to stream.
+   * When you write the reset command via FTMS you have to resend the command.
+   */
+  void writeStartCommand() {
+    if( mRevoWriteChar ) {
+      std::vector<uint8_t> cmd;
+      cmd = { 0x02, 0x51, 0x0B, 0x03 };
+      const bool writeStatus = mRevoWriteChar->writeValue(cmd, true);
+      Debug.printf("Wrote thing to start stuff... %d\n", writeStatus);
+    } else {
+      Debug.println("ERROR: mRevoWriteChar is not truthy");
     }
   }
 
@@ -320,7 +322,6 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
     sessionEndedDetected();
     mResetPending = true;
     mResetStartTime = millis();  // start countdown
-   //sendResetCommand();
   }
 
   // -----------------------------------------------------------------------
@@ -341,15 +342,20 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
     }
   }
 
+  float milesTenthsToMeters(uint16_t tenthsOfMile) {
+    constexpr float metersPerMile = 16.0934f;
+    return (tenthsOfMile * metersPerMile);
+  }
+
   void handleURevoDataNotify(uint8_t* data, size_t length) {
     Debug.printArray(data, length, "UREVO Proprietary Data");           
     
     #define UREVO_STATUS_IDX 2
     #define UREVO_SPEED_IDX 3
-    #define UREVO_DURATION_IDX 4
-    #define UREVO_DISTANCE_IDX 6
+    #define UREVO_DURATION_IDX 5
+    #define UREVO_DISTANCE_IDX 7
     #define UREVO_TBD_IDX 8  // Not sure but it increases by 1 each time.  It's too quick to be calories.
-    #define UREVO_STEP_IDX 10
+    #define UREVO_STEP_IDX 11
 
     if( length < 6 ) {
       Debug.printf("ERROR: Invalid length of %d\n", length);
@@ -376,6 +382,9 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
           sessionStartedDetected();
         }
         break;
+      case 0x04:
+        // This is start of pause, lets wait for the treadmill to stop first.
+        break;
       default:  
         if( gIsTreadmillActive ) {
           sessionEndedDetectedWrapper();
@@ -384,7 +393,11 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
 
     if( length > 6 ) {
       uint16_t distanceInPoint1Miles = data[UREVO_DISTANCE_IDX+1] << 8 | (data[UREVO_DISTANCE_IDX]);
+      gDistanceInMeters = milesTenthsToMeters(distanceInPoint1Miles);
       gSteps = data[UREVO_STEP_IDX+1] << 8 | data[UREVO_STEP_IDX];
+      gDurationInSecs = data[UREVO_DURATION_IDX+1] << 8 | data[UREVO_DURATION_IDX];
+      
+      Debug.printf("Steps: %lu, meters: %lu, duration: %lu\n", gSteps, gDistanceInMeters, gDurationInSecs);
     }
   }
 
@@ -401,8 +414,10 @@ class TreadmillDeviceUrevoProtocol : public TreadmillDevice {
       // 0x01 = Reset
       cmd = { 0x08, 0x01 };
       mControlPointChar->writeValue(cmd);
-
       Debug.printf("Sent FTMS Request Control + Reset opcodes to treadmill via Handle (0x%04X)\n", handle);
+      delay(1000);
+      writeStartCommand();
+
     } else {
       Debug.println("Cannot reset treadmill - control point not available or not connected.");
     }

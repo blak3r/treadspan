@@ -227,3 +227,7 @@ LOW
 If you have a question go here: https://github.com/blak3r/treadspan/discussions
 If you want to report a bug go here: https://github.com/blak3r/treadspan/issues
 
+## Supported Treadmills
+[UREVO E1L](https://amzn.to/4iwcj29)
+[TR1200](https://amzn.to/4bbn8ok)
+* note there are affiliate links.
