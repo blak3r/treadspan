@@ -82,6 +82,7 @@ You have to write: 02510B03 to
 Characteristic: 0xfff2  Handle: 0x0038            
 
 Then, you'll see a stream of data on 0xFFF1
+```
 [14:18:36.827] UREVO Proprietary Data: 02 51 03 06 00 16 00 00 00 06 00 0D 00 00 00 00 00 DF 03
 [14:18:36.217] UREVO Proprietary Data: 02 51 03 06 00 16 00 00 00 06 00 0E 00 00 00 00 00 DC 03
 [14:18:36.517] UREVO Proprietary Data: 02 51 03 06 00 17 00 00 00 06 00 0E 00 00 00 00 00 DD 03
@@ -1050,6 +1051,4 @@ FULL STOP (holding play on the remote)
 [14:24:10.653] UREVO Proprietary Data: 02 51 01 00 00 4A 01 0B 00 82 00 76 01 00 00 00 00 F9 03
 [14:24:10.983] UREVO Proprietary Data: 02 51 00 00 09 03
 [14:24:10.342] UREVO Proprietary Data: 02 51 00 00 09 03
-
-
-byte 3 
+```
