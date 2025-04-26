@@ -66,12 +66,20 @@ struct SyncView: View {
                 }
 
                 Spacer()
+                
+                // Today's total steps
+                (Text("Today, so far, you've taken ") +
+                 Text("\(Int(viewModel.todayTotalSteps))").bold() +
+                 Text(" steps!"))
+                  .font(.footnote)
+                  .padding(.bottom, 20)
             }
             .padding()
             .toast(message: $viewModel.healthKitSyncStatusMessage)
             .onAppear {
                 // Automatically scan/fetch from the treadmill when this view appears
                 viewModel.fetchAndSaveSessions()
+                viewModel.fetchTodayTotalSteps()
             }
         }
     }
@@ -212,6 +220,7 @@ class BLEViewModel: NSObject, ObservableObject {
     @Published var isFetching: Bool = false
     @Published var healthKitSyncStatusMessage: String = ""
     @Published var healthKitSyncCompleted: Bool = false
+    @Published var todayTotalSteps: Double = 0
 
     private var didReceiveStopMarker: Bool = false
     private var centralManager: CBCentralManager!
@@ -435,9 +444,27 @@ class BLEViewModel: NSObject, ObservableObject {
                 self.healthKitSyncStatusMessage = "Some sessions failed to sync."
             }
             // 3) Once sessions are saved, fetch stride-length data:
-            self.fetchAndPrintStrideLengths()
+            //self.fetchAndPrintStrideLengths()
+            self.fetchTodayTotalSteps()
         }
     }
+    
+     // Fetch today's total steps (non-blocking)
+     func fetchTodayTotalSteps() {
+       let calendar = Calendar.current
+       let start = calendar.startOfDay(for: Date())
+       let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+
+       let query = HKStatisticsQuery(quantityType: stepType,
+                                      quantitySamplePredicate: predicate,
+                                      options: .cumulativeSum) { _, result, _ in
+         guard let sum = result?.sumQuantity() else { return }
+         DispatchQueue.main.async {
+           self.todayTotalSteps = sum.doubleValue(for: .count())
+         }
+       }
+       healthStore.execute(query)
+     }
 
     // 4) Fetch stride-length samples (last 7 days) and print to console
     private func fetchAndPrintStrideLengths() {
