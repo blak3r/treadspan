@@ -8,6 +8,7 @@
  *.  2025-04-06.  1.1.9 - Working FTMS, worked with UREVO E1L
  *   2025-04-08.  1.1.10- NimBLE updated to 2.2.3.
  *   2025-04-19   1.2.11- Platformio layout / UREVO Protocol.
+ *   2025-06-22   1.2.12- FTMS steps per .1 meter increased.
  * Author: Blake Robertson
  * License: MIT
  *****************************************************************************/
@@ -28,17 +29,20 @@
  *                                      CONFIGURATION
  ******************************************************************************************/
 
-#define FW_VERSION "v1.2.11"
+#define FW_VERSION "v1.2.13"
 
 /******************************************************************************************
  * 🏃 TREADMILL MODE SELECTION 🏃
  * Uncomment the mode that matches your treadmill setup.
  ******************************************************************************************/
 
-//#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
-//#define RETRO_MODE 1            // 🟢 Use Serial Port for Sessions (Requires special hardware)
-//#define FTMS_MODE 1             // Most Common - supports all treadmills which implemented FTMS
-#define UREVO_MODE 1            // UREVO's proprietary service that provides step count, uses FTMS control characteristic in tandem.
+// dev/local toggles for manual testing
+ #ifndef RELEASE_BUILD
+  //#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
+  //#define RETRO_MODE 1            // 🟢 Use Serial Port for Sessions (Requires special hardware)
+  #define FTMS_MODE 1             // Most Common - supports all treadmills which implemented FTMS
+  //#define UREVO_MODE 1            // UREVO's proprietary service that provides step count, uses FTMS control characteristic in tandem.  
+#endif 
 
 /******************************************************************************************
  * ⚙️ GENERAL SETTINGS ⚙️

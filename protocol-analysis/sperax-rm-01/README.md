@@ -44,5 +44,5 @@ Device Info:
   Hardware Revision: V1.0.0_007
   Firmware Revision: V356
   Software Revision: V0.1.17_20240820
-  System ID: �6��H�
+  System ID: �6��H� <-- is binary properly!
 ```

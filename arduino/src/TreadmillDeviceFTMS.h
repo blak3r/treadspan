@@ -48,8 +48,8 @@ class TreadmillDeviceFTMS : public TreadmillDevice {
         }
 
         // Check for delayed reset
-        if (mResetPending && (millis() - mResetStartTime >= 5000)) {
-          Debug.println("5 seconds elapsed since session end — sending reset command.");
+        if (mResetPending && (millis() - mResetStartTime >= 12000)) {
+          Debug.println("12 seconds elapsed since session end — sending reset command.");
           sendResetCommand();
           mResetPending = false;
         }
@@ -248,7 +248,7 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
       sSelf = this; // so static callback can call into our member
       //mTreadmillDataChar->canIndicate() i think sperax can't do indicate.
       // Fun FAc
-      mTreadmillDataChar->subscribe(true, onTreadmillDataNotify, mTreadmillDataChar->canIndicate());
+      mTreadmillDataChar->subscribe(true, onTreadmillDataNotify);
       Debug.printf("Subscribed to Treadmill Data (0x2ACD). Supports Indicate?: %d\n", mTreadmillDataChar->canIndicate());
     } else {
       Debug.println("Treadmill Data (0x2ACD) not found or not notifiable.");
@@ -479,7 +479,8 @@ void printCharacteristicAndHandleMap(NimBLEClient* pClient) {
 
 
         if( distanceRaw > 0 ) {
-          gSteps = distanceRaw * 1.7233f;
+          gSteps = distanceRaw * 2.636649f; // was 1.7233f
+
         } else {
           gSteps = 0;
         }
