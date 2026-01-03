@@ -71,7 +71,7 @@ private:
 
     // We'll request these opcodes in a round-robin fashion, we request STEPS and STATUS
     // more frequently so we're more responsive
-    static constexpr uint8_t consoleCommandOrder[10] = {
+    inline static constexpr uint8_t consoleCommandOrder[10] = {
         OPCODE_STEPS,    OPCODE_STATUS,   OPCODE_DURATION, OPCODE_STATUS,   OPCODE_DISTANCE,
         OPCODE_STEPS,    OPCODE_STATUS,   OPCODE_CALORIES, OPCODE_STATUS,   OPCODE_SPEED
     };

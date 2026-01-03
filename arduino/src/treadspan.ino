@@ -29,7 +29,7 @@
  *                                      CONFIGURATION
  ******************************************************************************************/
 
-#define FW_VERSION "v1.2.13"
+#define FW_VERSION "v1.2.14"
 
 /******************************************************************************************
  * 🏃 TREADMILL MODE SELECTION 🏃
@@ -38,10 +38,10 @@
 
 // dev/local toggles for manual testing
  #ifndef RELEASE_BUILD
-  //#define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
+  #define OMNI_CONSOLE_MODE 1     // 🔵 Use BLE for Sessions (Requires OMNI Console)
   //#define RETRO_MODE 1            // 🟢 Use Serial Port for Sessions (Requires special hardware)
-  #define FTMS_MODE 1             // Most Common - supports all treadmills which implemented FTMS
-  //#define UREVO_MODE 1            // UREVO's proprietary service that provides step count, uses FTMS control characteristic in tandem.  
+  //#define FTMS_MODE 1             // Most Common - supports all treadmills which implemented FTMS
+  //≈#define UREVO_MODE 1            // UREVO's proprietary service that provides step count, uses FTMS control characteristic in tandem.  
 #endif 
 
 /******************************************************************************************

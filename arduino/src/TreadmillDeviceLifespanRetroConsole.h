@@ -80,9 +80,17 @@ public:
         }
     }
 
-    bool isConnected() {
-      return false; // this is used to show a bluetooth icon, so we'll always return false.
-    }
+  bool isConnected() {
+    return false; // this is used to show a bluetooth icon, so we'll always return false.
+  }
+
+  bool isBle() override {
+    return false; // this device is not BLE
+  }
+
+  String getBleServiceUuid() override {
+    return String(); // not applicable for retro console
+  }
 
 private:
     // ------------------------------- 

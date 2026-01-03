@@ -3,7 +3,7 @@ set -euo pipefail
 
 # -------- CONFIG --------
 ENV_NAME="lilygo-t-display"
-BUILD_DIR="../.pio/build/${ENV_NAME}"
+BUILD_DIR=".pio/build/${ENV_NAME}"
 RELEASES_BASE="${HOME}/Documents/git/treadspan-web-installer/releases"
 
 # PlatformIO Core (auto-detect)
