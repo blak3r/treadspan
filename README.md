@@ -104,11 +104,18 @@ the mobile app without modification.
 The source code to the mobile app is available in the ios-app folder.
 
 ### ESP32 Firmware (Setup Arduino Development Environment).
-
 NOTE: the project is currently able to work with both Arduino IDE and platformio.
-If you don't have a hard preference, i'd recommend platformio as I'm moving in that direction and 
-I believe it's actually faster to setup .
+(That's why you see code in the TreadspanDevice*.h files) If you don't have a hard preference, 
+i'd recommend platformio as I'm moving in that direction and I believe it's actually faster 
+to setup (although I have less documentation overall for that version).
 
+#### Platformio
+1. Install Platformio.
+2. Open the treadspan/arduino project folder.
+3. Run a build... I believe this will download the dependencies and everything needed.
+4(I don't have the process fully documented from scratch like i did the Arduino IDE... please help improve this documentaiton.) )
+
+#### Arduino IDE approach
 1. Install Arduino IDE.
 2. Setup Arduino IDE for ESP32 support. See [this guide.](https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/)
 3. Open the treadspan.ino file in the arduino folder.
@@ -159,6 +166,11 @@ BLE protocol. (The Metrics View is what took the vast majority of time to develo
 
 
 ### I have the LifeSpan Retro Console, Can I use this solution?
+
+There are multiple versions of the retro console and depending on which you have dictates the process...
+If you have one with the BT module included, then you should be able to install the version for the OMNIConsole and it'll work.
+
+If you have the serial only version...
 In theory, yes.  It is possible to get the steps through the serial port. I have implemented it and used it for some time.  
 The downside of this approach is you need more complicated hardware and if you're not careful, there is a possibility that you could damage your treadmill if you 
 don't connect things correctly.
@@ -196,9 +208,9 @@ HIGH
 - ~~put code in place for fixing duration if time not set at start (mobile app shouldnt crash)~~
 - ~~did i remove the reconnectWifiIfNecessary(); in periodicNtpUpdate~~
 - NTP... go to the config_time method?
-- Mobile App - Display total steps 
+- Mobile App - Display total steps better (refresh it more often)... fix some graph bugs. 
 - FTMS - need a means of converting distance --> steps.
-- Can I reduce backlight?
+- ~~Can I reduce backlight?~~
 
 MED
 - ~~WIFI Reconnect code on Arduino.~~
