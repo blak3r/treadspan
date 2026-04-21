@@ -9,6 +9,7 @@
  *   2025-04-08.  1.1.10- NimBLE updated to 2.2.3.
  *   2025-04-19   1.2.11- Platformio layout / UREVO Protocol.
  *   2025-06-22   1.2.12- FTMS steps per .1 meter increased.
+ *   2026-04-21   1.2.15- Lifespan BT console prefix updated to support retro bt.
  * Author: Blake Robertson
  * License: MIT
  *****************************************************************************/
@@ -29,7 +30,7 @@
  *                                      CONFIGURATION
  ******************************************************************************************/
 
-#define FW_VERSION "v1.2.14"
+#define FW_VERSION "v1.2.15"
 
 /******************************************************************************************
  * 🏃 TREADMILL MODE SELECTION 🏃
