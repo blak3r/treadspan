@@ -142,3 +142,9 @@ Here's another view of the 1 6 0 commands..
 1 20:31:46 REQ : 1 6 0 10 0 50 40 29
 1 20:31:46 REQ : 1 6 0 15 0 0 185 201
 
+
+## Capture and decoding tools
+
+The [Python serial tools](tools/README.md) record timestamped receive-only
+captures and decode fragmented Modbus frames, including the existing decimal
+REQ/RESP logs in this directory. Offline decoding and tests need no hardware.
