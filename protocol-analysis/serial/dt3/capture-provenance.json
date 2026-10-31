@@ -1,0 +1,20 @@
+[
+  {
+    "file": "buttons-console-raw.jsonl.gz",
+    "original_sha256": "96fdf552f1adc0619af08812412d73b0175b1d6770b4e186c037f94638b93e1a",
+    "published_sha256": "42d0cf48b854ecdd6831b6bf9ceffcf6d6754c75ba11e8d05475da81c7318113",
+    "changes": "USB adapter device paths redacted in session headers; JSON reserialized; byte chunks, directions, timestamps and operator markers preserved."
+  },
+  {
+    "file": "buttons-base-raw.jsonl.gz",
+    "original_sha256": "27b3d746003b84dbf700f3b4f000f775786382d35e9a7fe1aa5450f6d7268596",
+    "published_sha256": "30ce9b50e8924ed6e45fa259c04ec84235c3d8046d9f7a0b6a90dd8b112f61e6",
+    "changes": "USB adapter device paths redacted in session headers; JSON reserialized; byte chunks, directions, timestamps and operator markers preserved."
+  },
+  {
+    "file": "speed-ramp-base-raw.jsonl.gz",
+    "original_sha256": "6b33fee880e7ec320c5bcacbcf9186dc36857b37525f383b5b878a6e3b02cc8c",
+    "published_sha256": "77bbd2a42bc1c30a2e691827541bf6f72b830f310b01621d1cd15818747f6079",
+    "changes": "USB adapter device paths redacted in session headers; JSON reserialized; byte chunks, directions, timestamps and operator markers preserved."
+  }
+]

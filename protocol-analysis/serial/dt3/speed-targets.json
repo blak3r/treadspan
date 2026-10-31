@@ -1,0 +1,228 @@
+{
+  "profile": "LifeSpan TR1200 / DT3 console, displayed MPH",
+  "mapping": [
+    {
+      "mph": 0.4,
+      "code": 88,
+      "elapsed_s": 254.278426,
+      "write_ack_hex": "01 06 00 0a 00 58 a8 32"
+    },
+    {
+      "mph": 0.5,
+      "code": 117,
+      "elapsed_s": 261.274741,
+      "write_ack_hex": "01 06 00 0a 00 75 68 2f"
+    },
+    {
+      "mph": 0.6,
+      "code": 132,
+      "elapsed_s": 265.27468,
+      "write_ack_hex": "01 06 00 0a 00 84 a9 ab"
+    },
+    {
+      "mph": 0.7,
+      "code": 161,
+      "elapsed_s": 270.275708,
+      "write_ack_hex": "01 06 00 0a 00 a1 68 70"
+    },
+    {
+      "mph": 0.8,
+      "code": 176,
+      "elapsed_s": 275.275437,
+      "write_ack_hex": "01 06 00 0a 00 b0 a8 7c"
+    },
+    {
+      "mph": 0.9,
+      "code": 205,
+      "elapsed_s": 280.27594,
+      "write_ack_hex": "01 06 00 0a 00 cd 68 5d"
+    },
+    {
+      "mph": 1.0,
+      "code": 235,
+      "elapsed_s": 286.276152,
+      "write_ack_hex": "01 06 00 0a 00 eb e9 87"
+    },
+    {
+      "mph": 1.1,
+      "code": 249,
+      "elapsed_s": 291.276538,
+      "write_ack_hex": "01 06 00 0a 00 f9 69 8a"
+    },
+    {
+      "mph": 1.2,
+      "code": 279,
+      "elapsed_s": 295.276848,
+      "write_ack_hex": "01 06 00 0a 01 17 e8 56"
+    },
+    {
+      "mph": 1.3,
+      "code": 293,
+      "elapsed_s": 300.277297,
+      "write_ack_hex": "01 06 00 0a 01 25 69 83"
+    },
+    {
+      "mph": 1.4,
+      "code": 323,
+      "elapsed_s": 304.27739,
+      "write_ack_hex": "01 06 00 0a 01 43 e9 a9"
+    },
+    {
+      "mph": 1.5,
+      "code": 352,
+      "elapsed_s": 308.277446,
+      "write_ack_hex": "01 06 00 0a 01 60 a8 70"
+    },
+    {
+      "mph": 1.6,
+      "code": 367,
+      "elapsed_s": 312.277917,
+      "write_ack_hex": "01 06 00 0a 01 6f e8 74"
+    },
+    {
+      "mph": 1.7,
+      "code": 396,
+      "elapsed_s": 316.277976,
+      "write_ack_hex": "01 06 00 0a 01 8c a9 fd"
+    },
+    {
+      "mph": 1.8,
+      "code": 411,
+      "elapsed_s": 319.278422,
+      "write_ack_hex": "01 06 00 0a 01 9b e9 f3"
+    },
+    {
+      "mph": 1.9,
+      "code": 440,
+      "elapsed_s": 322.278387,
+      "write_ack_hex": "01 06 00 0a 01 b8 a8 2a"
+    },
+    {
+      "mph": 2.0,
+      "code": 470,
+      "elapsed_s": 327.278831,
+      "write_ack_hex": "01 06 00 0a 01 d6 29 c6"
+    },
+    {
+      "mph": 2.1,
+      "code": 485,
+      "elapsed_s": 330.278904,
+      "write_ack_hex": "01 06 00 0a 01 e5 69 d3"
+    },
+    {
+      "mph": 2.2,
+      "code": 514,
+      "elapsed_s": 333.278944,
+      "write_ack_hex": "01 06 00 0a 02 02 29 69"
+    },
+    {
+      "mph": 2.3,
+      "code": 529,
+      "elapsed_s": 336.278989,
+      "write_ack_hex": "01 06 00 0a 02 11 68 a4"
+    },
+    {
+      "mph": 2.4,
+      "code": 558,
+      "elapsed_s": 339.279623,
+      "write_ack_hex": "01 06 00 0a 02 2e 28 b4"
+    },
+    {
+      "mph": 2.5,
+      "code": 587,
+      "elapsed_s": 343.279731,
+      "write_ack_hex": "01 06 00 0a 02 4b e8 9f"
+    },
+    {
+      "mph": 2.6,
+      "code": 602,
+      "elapsed_s": 346.279954,
+      "write_ack_hex": "01 06 00 0a 02 5a 28 93"
+    },
+    {
+      "mph": 2.7,
+      "code": 632,
+      "elapsed_s": 349.280407,
+      "write_ack_hex": "01 06 00 0a 02 78 a8 8a"
+    },
+    {
+      "mph": 2.8,
+      "code": 646,
+      "elapsed_s": 353.280353,
+      "write_ack_hex": "01 06 00 0a 02 86 29 0a"
+    },
+    {
+      "mph": 2.9,
+      "code": 676,
+      "elapsed_s": 355.280351,
+      "write_ack_hex": "01 06 00 0a 02 a4 a9 13"
+    },
+    {
+      "mph": 3.0,
+      "code": 705,
+      "elapsed_s": 358.280837,
+      "write_ack_hex": "01 06 00 0a 02 c1 69 38"
+    },
+    {
+      "mph": 3.1,
+      "code": 720,
+      "elapsed_s": 361.280983,
+      "write_ack_hex": "01 06 00 0a 02 d0 a9 34"
+    },
+    {
+      "mph": 3.2,
+      "code": 749,
+      "elapsed_s": 364.280912,
+      "write_ack_hex": "01 06 00 0a 02 ed 68 e5"
+    },
+    {
+      "mph": 3.3,
+      "code": 764,
+      "elapsed_s": 367.281185,
+      "write_ack_hex": "01 06 00 0a 02 fc a8 e9"
+    },
+    {
+      "mph": 3.4,
+      "code": 793,
+      "elapsed_s": 369.281437,
+      "write_ack_hex": "01 06 00 0a 03 19 68 f2"
+    },
+    {
+      "mph": 3.5,
+      "code": 823,
+      "elapsed_s": 372.28156,
+      "write_ack_hex": "01 06 00 0a 03 37 e8 ee"
+    },
+    {
+      "mph": 3.6,
+      "code": 837,
+      "elapsed_s": 375.281386,
+      "write_ack_hex": "01 06 00 0a 03 45 68 cb"
+    },
+    {
+      "mph": 3.7,
+      "code": 867,
+      "elapsed_s": 377.281989,
+      "write_ack_hex": "01 06 00 0a 03 63 e9 11"
+    },
+    {
+      "mph": 3.8,
+      "code": 881,
+      "elapsed_s": 380.281763,
+      "write_ack_hex": "01 06 00 0a 03 71 69 1c"
+    },
+    {
+      "mph": 3.9,
+      "code": 911,
+      "elapsed_s": 382.281959,
+      "write_ack_hex": "01 06 00 0a 03 8f e8 9c"
+    },
+    {
+      "mph": 4.0,
+      "code": 940,
+      "elapsed_s": 386.282037,
+      "write_ack_hex": "01 06 00 0a 03 ac a9 45"
+    }
+  ],
+  "note": "Captured target codes, not physical belt-speed calibration. Do not replace Omni mappings with this profile."
+}
