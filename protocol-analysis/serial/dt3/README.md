@@ -149,8 +149,9 @@ falls and the console immediately writes `0x0000 = 0` twice, then reads
 `0x000B = 250`, `0x000A = 50` and `0x0000 = 0`; `0x0101` stays `0x2201`. The bit
 was still set at +111.03 s and clear at +113.24 s. Between those reads the
 console wrote `0x0000 = 0`, `0x000A = 88`, `0x0001 = 1` and `0x000B = 20`, so the
-On/Start burst clears it. No read separated `0x0001 = 1` from `0x000B = 20`, so
-which of the two clears it is still open.
+On/Start burst clears it. `0x0000 = 0` alone does not (it followed reinsertion
+without clearing the bit), which leaves `0x000A = 88`, `0x0001 = 1` or
+`0x000B = 20`. No read separated them.
 The software Stop preceded sampled zero speed in the key-pull test, so an
 independent hardware cutoff with software unresponsive was **not isolated**.
 These findings are not instructions to bypass the key or drive a TTL pin at 12 V.
