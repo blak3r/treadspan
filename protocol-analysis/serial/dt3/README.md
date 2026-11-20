@@ -10,9 +10,13 @@ A headless Python controller has reproduced initialization, Start, speed changes
 and Stop, including an empty-belt 1.6 MPH target held for five minutes and an
 operator-confirmed stop. The original console was also captured through its
 full displayed 0.4–4.0 MPH range. Direct controller operation above 1.6 MPH has
-not been established by these tests. Intermittent corrupt/missing serial replies
-remain unresolved; acknowledgments and software stopping do not replace a
-physical cutoff.
+not been established by these tests. Acknowledgments and software stopping do
+not replace a physical cutoff.
+
+A later [simultaneous two-direction capture](#simultaneous-two-direction-capture-2026-11-19)
+recorded requests, replies and DB9 pins 1 and 5–7 together with microsecond
+timing. It corrects the Stop sequence below and narrows the key-status
+findings.
 
 ## Wire format and registers
 
@@ -54,11 +58,22 @@ The final writes are approximately 70 ms apart. Background reads interleave;
 their exact placement differs between captures. This is a captured sequence,
 not proof of a minimal mandatory handshake.
 
-Stop writes `0x000A = 50`, then about one second later `0x0000 = 0`.
-The isolated DT3 Stop actions did **not** clear `0x000F`. Deceleration is not
-instantaneous: the original console's 4 MPH run took about 14 seconds to stop.
-Confirm speed feedback and physical stop instead of equating a write echo with
-an already stationary belt. No DT3 pause-register sequence was established;
+Stop writes `0x000A = 50` once and lets the base coast down by itself, at
+about 0.23 MPH per second. The console keeps reading `0xD10A` every 2 s and
+writes `0x0000 = 0` only once a reading is below about 0.8 MPH:
+
+| From | `0x000A = 50` → `0x0000 = 0` | `0xD10A` readings before the cut |
+| --- | --- | --- |
+| 4.0 MPH | 13.9 s | 855, 709, 550, 408, 291, 222, **181** |
+| 1.6 MPH | 6.0 s | 362, 222, **133** |
+| 0.4 MPH | 0.6 s | already low |
+
+A reading of 222 never triggered the cut, so the threshold lies between 182 and
+222. Speed reads 0 about 2 s after `0x0000 = 0`. The earlier "about one second
+later" description only holds when stopping from the lowest speeds. The
+isolated DT3 Stop actions did **not** clear `0x000F`. Confirm speed feedback
+and physical stop instead of equating a write echo with an already stationary
+belt. No DT3 pause-register sequence was established;
 retain the original Omni pause observations as model-specific evidence.
 
 Held Reset after a workout produced this six-write burst:
@@ -73,7 +88,10 @@ Held Reset after a workout produced this six-write burst:
 | ~1 s | `0x0000 = 0` |
 
 When stats were already cleared, held Reset also produced a shorter
-`0x000F = 0`, `0x000B = 250` pair. Thus an unchanged display does not imply
+`0x000F = 0`, `0x000B = 250` pair. The two-direction capture shows that pair
+repeating every 0.07–0.4 s for as long as the button is held (81 pairs in about
+16 s), with no `0x0000 = 0`. A Reset after a workout repeated the six-write
+burst above exactly. Thus an unchanged display does not imply
 no command was sent. The DT3 reset acknowledgment echoed zero exactly;
 the older Omni log's `0F00` value must not be treated as a DT3 success echo.
 
@@ -125,6 +143,14 @@ removal; `0x0201` also occurred during a moving key-pull test. Bit mask `0x0200`
 is therefore more useful than matching one whole status word. Reinsertion did
 not immediately clear it: normal console On/Start later restored `0x2001`.
 It is a reported/latched condition, not proof of the key's current position.
+The two-direction capture adds the console's side of this. On key removal pin 6
+falls and the console immediately writes `0x0000 = 0` twice, then reads
+`0x0101` ten times a second. On reinsertion pin 6 rises and the console writes
+`0x000B = 250`, `0x000A = 50` and `0x0000 = 0`; `0x0101` stays `0x2201`. The bit
+was still set at +111.03 s and clear at +113.24 s. Between those reads the
+console wrote `0x0000 = 0`, `0x000A = 88`, `0x0001 = 1` and `0x000B = 20`, so the
+On/Start burst clears it. No read separated `0x0001 = 1` from `0x000B = 20`, so
+which of the two clears it is still open.
 The software Stop preceded sampled zero speed in the key-pull test, so an
 independent hardware cutoff with software unresponsive was **not isolated**.
 These findings are not instructions to bypass the key or drive a TTL pin at 12 V.
@@ -140,11 +166,53 @@ Treat failed reads as missing samples, and do not infer a real footstep from
 an isolated increment. The raw files below document original-console buttons
 and speed targets; these later walking/key results are operator observations.
 
+## Simultaneous two-direction capture (2026-11-19)
+
+A Flipper Zero tapped DB9 pins 1 and 3–7 through diode probes, with the stock
+console driving the base. Edges were timestamped at 64 MHz and both 4800 8N1
+directions decoded from them, so FC03 replies are paired exactly with their
+requests. The operator pressed the buttons in the order shown; the display was
+not recorded.
+
+| File | Operator actions | Decoded |
+| --- | --- | --- |
+| `flipper-reset-key-start-power.log.gz` | Held Reset; key pulled and reinserted; Start and Stop at 0.4; mains off and on | 1,096 frames, 1 bad CRC (capture began mid-frame) |
+| `flipper-speed-run-stop-walk.log.gz` | Start, + every ~3 s from 0.4 to 4.0, Stop, Reset, walk to 1.6, Stop | 2,223 frames, 0 bad CRC |
+
+Findings beyond the Stop, Reset and key notes above:
+
+- **Every FC06 write was echoed** by the base about 23 ms later.
+- **Idle:** `0x0101` and `0x0410` are read every 2 s, `0xD10A` in between.
+  While running, `0x000F` is read twice a second and `0xD10A` every 2 s. An
+  unlisted register `0x000D` was written to 0 once while idle.
+- **Speed targets:** all 37 written targets match [speed-targets.json](speed-targets.json).
+  The console writes a new target at most once a second and combines quick
+  presses (0.4 → 0.7 → 1.2 → 1.6 in 3 s).
+- **Speed feedback tracks the target scale.** `0xD10A` settled within about 2%
+  of the target code above 1.0 MPH (4.0 → 936–938) and up to about 14% off at
+  0.4–0.9. That is agreement with the target codes, not a belt calibration.
+- **The wire was clean at every speed** up to 4.0 MPH: 0 bad CRCs on the
+  console ↔ base link. Intermittent corruption seen by a direct controller is
+  therefore more likely in its adapter path than in the harness.
+- **Counter:** `0x000F` rose by one at a time, about 1.3 per second while
+  walking at 1.6 MPH (31 in 24 s, no hand count), and 3 times in the empty-belt
+  ramp.
+- **Power cycle:** at mains off pin 6 falls first and pin 1 falls 0.8 s later.
+  At mains on, pin 3 shows 3.5 µs spikes at about 60 Hz for about 3 s before
+  pin 1 returns. That is noise, not data. Then the console reads `0x010E`
+  (`0x1008`) and writes `0x000B = 250` 1 s later, as in the mains sequence above.
+- **Pins 5 and 7:** pin 5 read high and pin 7 low throughout, apart from 3 µs
+  spikes on pin 7. A diode probe cannot tell high from floating.
+
+Decode with the Flipper probe's `treadcap_decode.py --replay` (see
+`../flipper/README.md` in the capture-tools contribution).
+
 ## Capture provenance and reproduction
 
 - `buttons-console-raw.jsonl.gz`: original-console request tap on pin 4.
 - `buttons-base-raw.jsonl.gz`: base response tap on pin 3 in a **separate pass**.
 - `speed-ramp-base-raw.jsonl.gz`: base acknowledgments during the labeled full ramp.
+- `flipper-*.log.gz`: simultaneous two-direction Flipper captures, unmodified.
 - `capture-provenance.json`: hashes and the limited publication redactions.
 
 USB device paths in session headers were redacted. Raw byte chunks, directions,
