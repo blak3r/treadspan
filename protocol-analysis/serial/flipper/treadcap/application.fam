@@ -1,0 +1,18 @@
+# The CLI command is a plugin, and the build tool builds plugins with a parent
+# app. The parent only exists for the build; install cli_treadcap.fal.
+App(
+    appid="treadcap",
+    name="Tread Capture",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="treadcap_app",
+    sources=["treadcap_app.c"],
+    fap_category="GPIO",
+)
+
+App(
+    appid="cli_treadcap",
+    apptype=FlipperAppType.PLUGIN,
+    entry_point="cli_treadcap_ep",
+    requires=["treadcap"],
+    sources=["treadcap.c"],
+)
