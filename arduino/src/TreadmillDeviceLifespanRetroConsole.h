@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include "TreadmillDevice.h"
+#include "LifespanSerialParser.h"
 #include "globals.h"  // for sessionStartedDetected(), sessionEndedDetected(), etc.
 
 /**
@@ -19,9 +20,7 @@ inline float estimate_mph(int value) {
  */
 class TreadmillDeviceLifespanRetroConsole : public TreadmillDevice {
 public:
-    TreadmillDeviceLifespanRetroConsole() {
-        // Constructor: you could parameterize pins or speeds if needed.
-    }
+    TreadmillDeviceLifespanRetroConsole() : parser(onSteps, onSpeed, this) {}
 
     virtual ~TreadmillDeviceLifespanRetroConsole() {}
 
@@ -39,45 +38,16 @@ public:
         uart1.begin(4800, SERIAL_8N1, rx1Pin, tx1Pin);
         uart2.begin(4800, SERIAL_8N1, rx2Pin, tx2Pin);
 
-        // Clear buffers
-        uart1Buffer.reserve(64);  // optional
-        uart2Buffer.reserve(64);  // optional
-        uart1Buffer = "";
-        uart2Buffer = "";
-        uart1RxCount = 0;
-        uart2RxCount = 0;
-        lastRequestType = 0;
+        parser.reset();
     }
 
-    // Called repeatedly in Arduino loop()
     void loopHandler() override {
-        // 1) Check if data is available on UART1
-        while (uart1.available() > 0) {
-            char receivedChar = (char)uart1.read();
-            uart1Buf[uart1RxCount % CMD_BUF_SIZE] = receivedChar;
-            uart1RxCount++;
-            uart1Buffer += String(receivedChar, DEC) + " ";
-            // Check if we have a command in other uart buffer to process.
-            // We're using commands coming in on other uart to trigger processing each other
-            if (uart2RxCount > 0) {
-              processResponse();
-            }
-            // If we see data on UART1, let's see if we also have data from UART2
-            // to form a request/response pair. (Or we can wait until we read the entire request.)
-        }
-
-        // 2) Check if data is available on UART2
-        while (uart2.available() > 0) {
-            char receivedChar = (char)uart2.read();
-            uart2Buf[uart2RxCount % CMD_BUF_SIZE] = receivedChar;
-            uart2RxCount++;
-            uart2Buffer += String(receivedChar, DEC) + " ";
-            // Check if we have a command in other uart buffer to process.
-            // We're using commands coming in on other uart to trigger processing each other
-            if (uart1RxCount > 0) {
-              processRequest();
-            }
-        }
+        // Decode complete requests before replies already buffered by the UARTs.
+        // A bounded pending queue keeps their order without allocating Strings.
+        while (uart1.available() > 0)
+            parser.requestByte(static_cast<uint8_t>(uart1.read()), millis());
+        while (uart2.available() > 0)
+            parser.responseByte(static_cast<uint8_t>(uart2.read()), millis());
     }
 
   bool isConnected() {
@@ -93,119 +63,19 @@ public:
   }
 
 private:
-    // ------------------------------- 
-    // Internal Constants & Buffers
-    // -------------------------------
-    static constexpr size_t CMD_BUF_SIZE = 10;
-
-    // If you want to specify the pins used for UART1 / UART2:
     static constexpr int rx1Pin = 20;
     static constexpr int tx1Pin = 6;
     static constexpr int rx2Pin = 23;
     static constexpr int tx2Pin = 8;
+    HardwareSerial uart1 = HardwareSerial(1);
+    HardwareSerial uart2 = HardwareSerial(2);
+    treadspan::LifespanSerialParser parser;
 
-    // Distinguish request types from the console
-    enum {
-        LAST_REQUEST_IS_STEPS = 1,
-        LAST_REQUEST_IS_SPEED = 2,
-        LAST_REQUEST_IS_DISTANCE = 3,
-        LAST_REQUEST_IS_TIME = 4
-    };
-
-    // We match your original code:
-    static constexpr const char* STEPS_STARTSWITH = "1 3 0 15"; 
-    static constexpr const char* SPEED_STARTSWITH = "1 6 0 10";
-
-    // ------------------------------- 
-    // Class Member Variables
-    // -------------------------------
-    HardwareSerial uart1 = HardwareSerial(1); // UART1
-    HardwareSerial uart2 = HardwareSerial(2); // UART2
-
-    // Buffers for capturing UART data
-    char  uart1Buf[CMD_BUF_SIZE];
-    char  uart2Buf[CMD_BUF_SIZE];
-    int   uart1RxCount = 0;
-    int   uart2RxCount = 0;
-    String uart1Buffer;
-    String uart2Buffer;
-
-    int   lastRequestType = 0;
-
-private:
-    // -------------------------------
-    // Methods
-    // -------------------------------
-    void processRequest() {
-        if (VERBOSE_LOGGING) {
-            Debug.print("REQ: ");
-            Debug.println(uart1Buffer);
-        }
-
-        // e.g. check if the command starts with STEPS_STARTSWITH
-        if (uart1Buffer.startsWith(STEPS_STARTSWITH)) {
-            lastRequestType = LAST_REQUEST_IS_STEPS;
-        } else if (uart1Buffer.startsWith(SPEED_STARTSWITH)) {
-            // parse speed
-            // We'll just parse from the raw buffer directly
-            getSpeedFromCommand((uint8_t*)uart1Buf);
-        } else {
-            lastRequestType = 0;
-        }
-
-        // Clear the buffer, reset counters
-        uart1Buffer = "";
-        uart1RxCount = 0;
-    }
-
-    void processResponse() {
-        if (VERBOSE_LOGGING) {
-            Debug.print("RESP: ");
-            Debug.println(uart2Buffer);
-        }
-
-        // parse steps if the last request was steps
-        if (lastRequestType == LAST_REQUEST_IS_STEPS) {
-            // from original code: steps = [3]*256 + [4]
-            gSteps = (uint8_t)uart2Buf[3] * 256 + (uint8_t)uart2Buf[4];
-            lastRequestType = 0;
-        }
-
-        // Clear the buffer, reset counters
-        uart2Buffer = "";
-        uart2RxCount = 0;
-    }
-
-    /**
-     * Called when we see the "SPEED_STARTSWITH" command from UART1.
-     * We'll parse the speed from the given buffer. If speedInt>50 => treadmill active,
-     * if speedInt==50 => treadmill stops, etc.
-     */
-    float getSpeedFromCommand(const uint8_t* buf) {
-        // In your original code you had:
-        //   if(buf[3] == 10) { 
-        //       speedInt = buf[4]*256 + buf[5];
-        //       if(speedInt == 50) {...} else if (speedInt>50) {...}
-        //   }
-        // We'll replicate that:
-        if (buf[3] == 10) {
-            int speedInt = (uint8_t)buf[4] * 256 + (uint8_t)buf[5];
-            // In your code, 50 meant "off"
-            if (speedInt == 50) {
-                // treadmill off
-                if (gIsTreadmillActive) {
-                    sessionEndedDetected();
-                }
-            } else if (speedInt > 50) {
-                // treadmill on
-                if (!gIsTreadmillActive) {
-                    sessionStartedDetected();
-                }
-            }
-            // If you want to store the float speed somewhere, do so here:
-            // float speedFloat = estimate_mph(speedInt);
-            // ...
-        }
-        return -1.0f;
+    static void onSteps(void*, uint16_t value) { gSteps = value; }
+    static void onSpeed(void*, uint16_t value) {
+        // Preserve existing session inference from validated target commands.
+        // This is not a confirmation of actual belt motion.
+        if (value == 50 && gIsTreadmillActive) sessionEndedDetected();
+        else if (value > 50 && !gIsTreadmillActive) sessionStartedDetected();
     }
 };
