@@ -142,3 +142,10 @@ Here's another view of the 1 6 0 commands..
 1 20:31:46 REQ : 1 6 0 10 0 50 40 29
 1 20:31:46 REQ : 1 6 0 15 0 0 185 201
 
+
+## Additional DT3 / TR1200 captures
+
+The [DT3 protocol notes](dt3/README.md) add captured boot/Start/Stop/Reset
+sequences, all 37 displayed speed targets, base speed feedback, and key-related
+status observations. They preserve model differences from the Omni captures
+above rather than assuming the consoles have identical target mappings.
